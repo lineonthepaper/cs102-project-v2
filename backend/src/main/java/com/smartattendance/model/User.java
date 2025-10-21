@@ -17,14 +17,14 @@ import java.time.LocalDateTime;
 public class User {
 
     @Id
-    @Column(nullable = false, updatable = false, length = 32)
+    @Column(nullable = false, updatable = false, length = 255)
     private String id;
 
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(nullable = false)
-    private String password;
+    @Column(name = "auth_id")
+    private String authId;
 
     @Column(name = "first_name", nullable = false)
     private String firstName;

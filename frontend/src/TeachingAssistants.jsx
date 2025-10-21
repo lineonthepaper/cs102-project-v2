@@ -160,6 +160,7 @@ function TeachingAssistants() {
       return
     }
 
+
     try {
       let existingUser = taCandidate
 

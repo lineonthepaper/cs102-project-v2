@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 import { useNavigate } from 'react-router-dom'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+
 function Instructors() {
   const navigate = useNavigate()
 
@@ -212,6 +214,7 @@ function Instructors() {
       return
     }
 
+
     setAddingInstructor(true)
 
     try {
@@ -272,10 +275,10 @@ function Instructors() {
 
         if (updateError) throw updateError
       } else {
-        const { error: insertError } = await supabase
+        // Create instructor record in database (database trigger will auto-generate IDs like I0000001)
+        const { data: newUser, error: insertError } = await supabase
           .from('users')
           .insert({
-            id: authId,
             email,
             first_name: firstName,
             last_name: lastName,
@@ -283,11 +286,24 @@ function Instructors() {
             is_student: false,
             is_ta: false,
             enabled: true,
-            auth_id: authId,
             created_at: new Date().toISOString()
           })
+          .select() // Return the created record to see the generated ID
+          .single()
 
         if (insertError) throw insertError
+
+        // Update the user with auth_id
+        if (newUser && authId) {
+          const { error: updateAuthError } = await supabase
+            .from('users')
+            .update({ auth_id: authId })
+            .eq('id', newUser.id)
+
+          if (updateAuthError) {
+            console.error('Failed to update auth_id:', updateAuthError)
+          }
+        }
       }
 
       await fetchInstructors()
@@ -308,23 +324,53 @@ function Instructors() {
     }
 
     try {
+      // Get the user's auth_id before removing instructor status
+      const { data: userData, error: userFetchError } = await supabase
+        .from('users')
+        .select('auth_id')
+        .eq('id', instructor.id)
+        .single()
+
+      if (userFetchError) throw userFetchError
+
+      // Delete all section assignments
       await supabase
         .from('section_assignments')
         .delete()
         .eq('user_id', instructor.id)
         .eq('role', 'INSTRUCTOR')
 
+      // Delete all TA assignments
       await supabase
         .from('ta_assignments')
         .delete()
         .eq('user_id', instructor.id)
 
+      // If user had auth_id, remove them from Supabase Auth first
+      if (userData?.auth_id) {
+        const authId = userData.auth_id
+        console.log('Attempting to remove instructor from Supabase Auth. Auth ID:', authId)
+
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/admin/instructors/${authId}`, {
+            method: 'DELETE'
+          })
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            console.warn('Failed to remove instructor from Supabase Auth:', response.status, errorText)
+          } else {
+            console.log('Instructor successfully removed from Supabase Auth.')
+          }
+        } catch (authError) {
+          console.error('Error calling backend to delete auth user:', authError)
+        }
+      }
+
+      // Delete the user from the database
       const { error } = await supabase
         .from('users')
-        .update({
-          is_instructor: false,
-          is_ta: false
-        })
+        .delete()
         .eq('id', instructor.id)
 
       if (error) throw error
