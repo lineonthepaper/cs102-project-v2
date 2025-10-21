@@ -1,0 +1,60 @@
+package com.smartattendance.model;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.time.LocalDateTime;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "users")
+public class User {
+
+    @Id
+    @Column(nullable = false, updatable = false, length = 32)
+    private String id;
+
+    @Column(unique = true, nullable = false)
+    private String email;
+
+    @Column(nullable = false)
+    private String password;
+
+    @Column(name = "first_name", nullable = false)
+    private String firstName;
+
+    @Column(name = "last_name", nullable = false)
+    private String lastName;
+
+    @Column(name = "is_student", nullable = false)
+    private Boolean isStudent = false;
+
+    @Column(name = "is_instructor", nullable = false)
+    private Boolean isInstructor = false;
+
+    @Column(name = "is_ta", nullable = false)
+    private Boolean isTA = false;
+
+    @Column(nullable = false)
+    private Boolean enabled = true;
+
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    public String getRole() {
+        if (isInstructor) return "INSTRUCTOR";
+        if (isTA) return "TA";
+        return "STUDENT";
+    }
+}

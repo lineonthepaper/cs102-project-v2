@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/build/
+backend/.gradle/
+
+# Environment files (contains sensitive credentials!)
+env
+env.local
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+/tmp/
+
+# Build outputs
+dist/
+build/
+frontend/dist/
+backend/build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Temporary files
+*.tmp
+*~
+
+# Archive/diagnostic files
+scripts/archive/
