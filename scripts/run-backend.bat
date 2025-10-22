@@ -1,27 +1,21 @@
 @echo off
-setlocal enabledelayedexpansion
 REM Run the backend with environment variables from env file
 
 cd /d "%~dp0\.."
 
 echo Loading environment variables...
 
-REM Read env file and set variables
-for /f "usebackq tokens=1,* delims==" %%a in ("env") do (
-    set "line=%%a"
-    if not "!line:~0,1!"=="#" (
-        if not "%%a"=="" (
-            if "%%a"=="APP_SUPABASE_URL" set "SUPABASE_URL=%%b"
-            if "%%a"=="APP_SUPABASE_KEY" set "SUPABASE_ANON_KEY=%%b"
-            if "%%a"=="APP_SUPABASE_SERVICE_KEY" set "SUPABASE_SERVICE_ROLE_KEY=%%b"
-            if "%%a"=="SUPABASE_DB_HOST" set "DB_HOST=%%b"
-            if "%%a"=="SUPABASE_DB_PORT" set "DB_PORT=%%b"
-            if "%%a"=="SUPABASE_DB_NAME" set "DB_NAME=%%b"
-            if "%%a"=="SUPABASE_DB_USERNAME" set "DB_USER=%%b"
-            if "%%a"=="SUPABASE_DB_PASSWORD" set "DB_PASS=%%b"
-            if "%%a"=="JWT_SECRET" set "JWT_SECRET=%%b"
-        )
-    )
+REM Read env file and set variables (skip lines starting with # or empty)
+for /f "usebackq eol=# tokens=1,* delims==" %%a in ("env") do (
+    if "%%a"=="APP_SUPABASE_URL" set "SUPABASE_URL=%%b"
+    if "%%a"=="APP_SUPABASE_KEY" set "SUPABASE_ANON_KEY=%%b"
+    if "%%a"=="APP_SUPABASE_SERVICE_KEY" set "SUPABASE_SERVICE_ROLE_KEY=%%b"
+    if "%%a"=="SUPABASE_DB_HOST" set "DB_HOST=%%b"
+    if "%%a"=="SUPABASE_DB_PORT" set "DB_PORT=%%b"
+    if "%%a"=="SUPABASE_DB_NAME" set "DB_NAME=%%b"
+    if "%%a"=="SUPABASE_DB_USERNAME" set "DB_USER=%%b"
+    if "%%a"=="SUPABASE_DB_PASSWORD" set "DB_PASS=%%b"
+    if "%%a"=="JWT_SECRET" set "JWT_SECRET=%%b"
 )
 
 REM Extract project ref for pooler username
