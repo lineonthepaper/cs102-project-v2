@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 REM Run the frontend with environment variables from env file
 
 cd /d "%~dp0\.."
