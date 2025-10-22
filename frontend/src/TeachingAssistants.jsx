@@ -462,8 +462,8 @@ function TeachingAssistants() {
     <div className="container">
       <div className="page-header">
         <h1>Teaching Assistants Management</h1>
-        <button onClick={() => navigate('/dashboard')} className="btn btn-secondary-small">
-          Back to Dashboard
+        <button onClick={() => navigate('/home')} className="btn btn-secondary-small">
+          Back to Home
         </button>
       </div>
 

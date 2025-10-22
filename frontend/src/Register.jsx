@@ -23,7 +23,7 @@ function Register() {
     if (error) {
       setError(error.message)
     } else {
-      navigate('/dashboard')
+      navigate('/home')
     }
 
     setLoading(false)

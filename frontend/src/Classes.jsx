@@ -487,8 +487,8 @@ function Classes() {
     <div className="container">
       <div className="page-header">
         <h1>Classes Management</h1>
-        <button onClick={() => navigate('/dashboard')} className="btn btn-secondary-small">
-          Back to Dashboard
+        <button onClick={() => navigate('/home')} className="btn btn-secondary-small">
+          Back to Home
         </button>
       </div>
 
@@ -714,7 +714,7 @@ function Classes() {
                       onClick={() => handleSort('section_code')}
                       className="sortable"
                     >
-                      Section Code {getSortIcon('section_code')}
+                      Section {getSortIcon('section_code')}
                     </th>
                     <th
                       onClick={() => handleSort('course_id')}
@@ -726,31 +726,13 @@ function Classes() {
                       onClick={() => handleSort('year')}
                       className="sortable"
                     >
-                      Year {getSortIcon('year')}
-                    </th>
-                    <th
-                      onClick={() => handleSort('semester')}
-                      className="sortable"
-                    >
-                      Semester {getSortIcon('semester')}
+                      Term {getSortIcon('year')}
                     </th>
                     <th
                       onClick={() => handleSort('day_of_week')}
                       className="sortable"
                     >
-                      Day {getSortIcon('day_of_week')}
-                    </th>
-                    <th
-                      onClick={() => handleSort('start_time')}
-                      className="sortable"
-                    >
-                      Start Time {getSortIcon('start_time')}
-                    </th>
-                    <th
-                      onClick={() => handleSort('end_time')}
-                      className="sortable"
-                    >
-                      End Time {getSortIcon('end_time')}
+                      Schedule {getSortIcon('day_of_week')}
                     </th>
                     <th
                       onClick={() => handleSort('location')}
@@ -765,58 +747,44 @@ function Classes() {
                   {filteredSections.map(section => (
                     <tr key={section.id}>
                       <td>{section.section_code}</td>
-                      <td>{section.courses?.code} - {section.courses?.title}</td>
-                      <td>{section.year || 'Not set'}</td>
-                      <td>{section.semester ? `Semester ${section.semester}` : 'Not set'}</td>
                       <td>
-                        {(() => {
-                          // Prefer day_of_week field, fall back to parsing legacy schedule
-                          if (section.day_of_week) {
-                            return section.day_of_week
-                          }
-                          else if (section.schedule) {
-                            // Extract day from legacy schedule format (e.g., "Monday 09:00-10:30")
-                            const dayMatch = section.schedule.match(/^(\w+)/);
-                            return dayMatch ? dayMatch[1] : 'Not set';
-                          }
-                          else {
-                            return 'Not set';
-                          }
-                        })()}
+                        {section.courses?.code}
+                        <br />
+                        <small style={{ color: '#6b7280' }}>
+                          {section.courses?.title}
+                        </small>
+                      </td>
+                      <td>
+                        {section.year && section.semester ? (
+                          <>
+                            {section.year}
+                            <br />
+                            <small style={{ color: '#6b7280' }}>
+                              Semester {section.semester}
+                            </small>
+                          </>
+                        ) : 'Not set'}
                       </td>
                       <td>
                         {(() => {
-                          // Prefer start_time field, fall back to parsing legacy schedule
-                          if (section.start_time) {
-                            return section.start_time
-                          }
-                          else if (section.schedule) {
-                            // Extract start time from legacy schedule format (e.g., "Monday 09:00-10:30")
-                            const timeMatch = section.schedule.match(/(\d{2}:\d{2})-/);
-                            return timeMatch ? timeMatch[1] : 'Not set';
-                          }
-                          else {
-                            return 'Not set';
-                          }
+                          const day = section.day_of_week || (section.schedule && section.schedule.match(/^(\w+)/)?.[1]) || 'Not set'
+                          const startTime = section.start_time || (section.schedule && section.schedule.match(/(\d{2}:\d{2})-/)?.[1]) || ''
+                          const endTime = section.end_time || (section.schedule && section.schedule.match(/-(\d{2}:\d{2})/)?.[1]) || ''
+                          
+                          if (day === 'Not set') return 'Not set'
+                          
+                          return (
+                            <>
+                              {day}
+                              <br />
+                              <small style={{ color: '#6b7280' }}>
+                                {startTime && endTime ? `${startTime} - ${endTime}` : 'Time not set'}
+                              </small>
+                            </>
+                          )
                         })()}
                       </td>
-                      <td>
-                        {(() => {
-                          // Prefer end_time field, fall back to parsing legacy schedule
-                          if (section.end_time) {
-                            return section.end_time
-                          }
-                          else if (section.schedule) {
-                            // Extract end time from legacy schedule format (e.g., "Monday 09:00-10:30")
-                            const timeMatch = section.schedule.match(/-(\d{2}:\d{2})/);
-                            return timeMatch ? timeMatch[1] : 'Not set';
-                          }
-                          else {
-                            return 'Not set';
-                          }
-                        })()}
-                      </td>
-                      <td>{section.location}</td>
+                      <td>{section.location || 'Not set'}</td>
                       <td>
                         <div className="action-buttons">
                           <button

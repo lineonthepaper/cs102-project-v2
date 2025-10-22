@@ -142,7 +142,8 @@ function Students() {
               sections!inner (
                 id,
                 section_code,
-                term_label,
+                year,
+                semester,
                 meeting_day,
                 start_time,
                 end_time,
@@ -353,7 +354,8 @@ function Students() {
           id,
           section_code,
           course_id,
-          term_label,
+          year,
+          semester,
           meeting_day,
           start_time,
           end_time,
@@ -377,9 +379,10 @@ function Students() {
 
   const formatSectionSummary = (section) => {
     if (!section) return 'Not enrolled'
+    const termLabel = section.year && section.semester ? `${section.year} S${section.semester}` : null
     const parts = [
       section.section_code,
-      section.term_label || null,
+      termLabel,
       section.meeting_day != null ? formatMeetingDay(section.meeting_day) : null,
       section.start_time ? section.start_time.slice(0, 5) : null
     ].filter(Boolean)
@@ -639,8 +642,8 @@ function Students() {
     <div className="container">
       <div className="page-header">
         <h1>Students Management</h1>
-        <button onClick={() => navigate('/dashboard')} className="btn btn-secondary-small">
-          Back to Dashboard
+        <button onClick={() => navigate('/home')} className="btn btn-secondary-small">
+          Back to Home
         </button>
       </div>
 
@@ -693,7 +696,7 @@ function Students() {
               <option value="all">All Sections</option>
               {availableSections.map((section) => (
                 <option key={section.id} value={section.id}>
-                  {section.section_code} - {section.term_label || 'No term'}
+                  {section.section_code} - {section.year && section.semester ? `${section.year} S${section.semester}` : 'No term'}
                 </option>
               ))}
             </select>
@@ -950,8 +953,9 @@ function Students() {
                               <p className="no-sections">No sections available for this course.</p>
                             ) : (
                               courseSections.map((section) => {
+                                const termLabel = section.year && section.semester ? `${section.year} S${section.semester}` : null
                                 const metaParts = [
-                                  section.term_label || null,
+                                  termLabel,
                                   section.meeting_day != null ? formatMeetingDay(section.meeting_day) : null,
                                   formatTimeRange(section.start_time, section.end_time) || null,
                                   section.location || null

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
 
-function Dashboard() {
+function Home() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [userRole, setUserRole] = useState('Loading...')
@@ -61,12 +61,6 @@ function Dashboard() {
         </div>
       </div>
 
-      <div className="welcome-section">
-        <h2>Dashboard</h2>
-        <p>Manage your attendance system and track student participation efficiently.</p>
-
-        </div>
-
       <div className="dashboard-grid">
         <div className="card">
           <h3>Students</h3>
@@ -101,9 +95,11 @@ function Dashboard() {
         </div>
 
         <div className="card">
-          <h3>Attendance</h3>
-          <p>Start new attendance sessions and track participation</p>
-          <button className="btn btn-secondary">Start Session</button>
+          <h3>Mark Attendance</h3>
+          <p>Create sessions, mark student attendance, and manage records</p>
+          <button onClick={() => navigate('/attendance')} className="btn btn-secondary">
+            Mark Attendance
+          </button>
         </div>
 
         <div className="card">
@@ -111,15 +107,9 @@ function Dashboard() {
           <p>View attendance analytics and export reports</p>
           <button className="btn btn-secondary">View Reports</button>
         </div>
-
-        <div className="card">
-          <h3>Settings</h3>
-          <p>Configure system settings and preferences</p>
-          <button className="btn btn-secondary">Settings</button>
-        </div>
       </div>
     </div>
   )
 }
 
-export default Dashboard
+export default Home

@@ -73,74 +73,97 @@ INSERT INTO sections (course_id, section_code, year, semester, meeting_day, star
 -- =====================================================
 
 INSERT INTO section_enrollments (section_id, user_id, is_active, enrolled_at) VALUES
--- CS102-01 enrollments
-((SELECT id FROM sections WHERE section_code = 'CS102-01'), (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), true, CURRENT_TIMESTAMP),
-((SELECT id FROM sections WHERE section_code = 'CS102-01'), (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), true, CURRENT_TIMESTAMP),
+-- CS102-01 (2025 S1) enrollments
+((SELECT id FROM sections WHERE section_code = 'CS102-01' AND year = 2025 AND semester = 1 LIMIT 1), (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), true, CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS102-01' AND year = 2025 AND semester = 1 LIMIT 1), (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), true, CURRENT_TIMESTAMP),
 
--- CS102-02 enrollments
-((SELECT id FROM sections WHERE section_code = 'CS102-02'), (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), true, CURRENT_TIMESTAMP),
-((SELECT id FROM sections WHERE section_code = 'CS102-02'), (SELECT id FROM users WHERE email = 'student3@smu.edu.sg'), true, CURRENT_TIMESTAMP),
+-- CS102-01 (2025 S2) enrollments
+((SELECT id FROM sections WHERE section_code = 'CS102-01' AND year = 2025 AND semester = 2 LIMIT 1), (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), true, CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS102-01' AND year = 2025 AND semester = 2 LIMIT 1), (SELECT id FROM users WHERE email = 'student3@smu.edu.sg'), true, CURRENT_TIMESTAMP),
 
--- CS102-03 enrollments
-((SELECT id FROM sections WHERE section_code = 'CS102-03'), (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), true, CURRENT_TIMESTAMP),
-((SELECT id FROM sections WHERE section_code = 'CS102-03'), (SELECT id FROM users WHERE email = 'student3@smu.edu.sg'), true, CURRENT_TIMESTAMP),
+-- CS102-02 (2025 S1) enrollments
+((SELECT id FROM sections WHERE section_code = 'CS102-02' AND year = 2025 AND semester = 1 LIMIT 1), (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), true, CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS102-02' AND year = 2025 AND semester = 1 LIMIT 1), (SELECT id FROM users WHERE email = 'student3@smu.edu.sg'), true, CURRENT_TIMESTAMP),
 
--- CS201 enrollments
-((SELECT id FROM sections WHERE section_code = 'CS201-01'), (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), true, CURRENT_TIMESTAMP),
-((SELECT id FROM sections WHERE section_code = 'CS201-02'), (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), true, CURRENT_TIMESTAMP),
+-- CS201-01 enrollments
+((SELECT id FROM sections WHERE section_code = 'CS201-01' AND year = 2025 AND semester = 1 LIMIT 1), (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), true, CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS201-01' AND year = 2026 AND semester = 1 LIMIT 1), (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), true, CURRENT_TIMESTAMP),
 
--- CS301 enrollments
-((SELECT id FROM sections WHERE section_code = 'CS301-01'), (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), true, CURRENT_TIMESTAMP),
-((SELECT id FROM sections WHERE section_code = 'CS301-01'), (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), true, CURRENT_TIMESTAMP);
+-- CS301-01 enrollments
+((SELECT id FROM sections WHERE section_code = 'CS301-01' AND year = 2025 AND semester = 2 LIMIT 1), (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), true, CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS301-01' AND year = 2025 AND semester = 2 LIMIT 1), (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), true, CURRENT_TIMESTAMP);
 
 -- =====================================================
 -- 7. ATTENDANCE SESSIONS
 -- =====================================================
 
 INSERT INTO attendance_sessions (section_id, session_date, scheduled_start_time, scheduled_end_time, status, notes, created_at) VALUES
--- CS102-01 sessions
-((SELECT id FROM sections WHERE section_code = 'CS102-01'), DATE '2024-09-02', '09:00:00', '10:30:00', 'COMPLETED', 'Week 1 lecture', CURRENT_TIMESTAMP),
-((SELECT id FROM sections WHERE section_code = 'CS102-01'), DATE '2024-09-09', '09:00:00', '10:30:00', 'COMPLETED', 'Week 2 lecture', CURRENT_TIMESTAMP),
-((SELECT id FROM sections WHERE section_code = 'CS102-01'), DATE '2024-09-16', '09:00:00', '10:30:00', 'COMPLETED', 'Week 3 lecture', CURRENT_TIMESTAMP),
+-- CS102-01 (2025 S1) sessions - Mix of past and upcoming
+((SELECT id FROM sections WHERE section_code = 'CS102-01' AND year = 2025 AND semester = 1 LIMIT 1), DATE '2025-10-07', '09:00:00', '10:30:00', 'COMPLETED', 'Week 1 lecture', CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS102-01' AND year = 2025 AND semester = 1 LIMIT 1), DATE '2025-10-14', '09:00:00', '10:30:00', 'COMPLETED', 'Week 2 lecture', CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS102-01' AND year = 2025 AND semester = 1 LIMIT 1), DATE '2025-10-21', '09:00:00', '10:30:00', 'IN_PROGRESS', 'Week 3 lecture', CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS102-01' AND year = 2025 AND semester = 1 LIMIT 1), DATE '2025-10-28', '09:00:00', '10:30:00', 'SCHEDULED', 'Week 4 lecture', CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS102-01' AND year = 2025 AND semester = 1 LIMIT 1), DATE '2025-11-04', '09:00:00', '10:30:00', 'SCHEDULED', 'Week 5 lecture', CURRENT_TIMESTAMP),
 
--- CS102-02 sessions
-((SELECT id FROM sections WHERE section_code = 'CS102-02'), DATE '2024-09-03', '13:00:00', '14:30:00', 'COMPLETED', 'Week 1 lab', CURRENT_TIMESTAMP),
-((SELECT id FROM sections WHERE section_code = 'CS102-02'), DATE '2024-09-10', '13:00:00', '14:30:00', 'COMPLETED', 'Week 2 lab', CURRENT_TIMESTAMP),
+-- CS102-02 (2025 S1) sessions
+((SELECT id FROM sections WHERE section_code = 'CS102-02' AND year = 2025 AND semester = 1 LIMIT 1), DATE '2025-10-10', '15:00:00', '16:30:00', 'COMPLETED', 'Week 1 lab', CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS102-02' AND year = 2025 AND semester = 1 LIMIT 1), DATE '2025-10-17', '15:00:00', '16:30:00', 'COMPLETED', 'Week 2 lab', CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS102-02' AND year = 2025 AND semester = 1 LIMIT 1), DATE '2025-10-24', '15:00:00', '16:30:00', 'SCHEDULED', 'Week 3 lab', CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS102-02' AND year = 2025 AND semester = 1 LIMIT 1), DATE '2025-10-31', '15:00:00', '16:30:00', 'SCHEDULED', 'Week 4 lab', CURRENT_TIMESTAMP),
 
--- CS102-03 sessions
-((SELECT id FROM sections WHERE section_code = 'CS102-03'), DATE '2024-09-06', '15:00:00', '16:30:00', 'COMPLETED', 'Week 1 tutorial', CURRENT_TIMESTAMP);
+-- CS102-01 (2025 S2) sessions
+((SELECT id FROM sections WHERE section_code = 'CS102-01' AND year = 2025 AND semester = 2 LIMIT 1), DATE '2025-06-04', '13:00:00', '14:30:00', 'COMPLETED', 'Week 1 lecture', CURRENT_TIMESTAMP),
+((SELECT id FROM sections WHERE section_code = 'CS102-01' AND year = 2025 AND semester = 2 LIMIT 1), DATE '2025-06-11', '13:00:00', '14:30:00', 'COMPLETED', 'Week 2 lecture', CURRENT_TIMESTAMP);
 
 -- =====================================================
 -- 8. ATTENDANCE RECORDS
 -- =====================================================
 
 INSERT INTO attendance_records (session_id, user_id, status, checkin_time, checkout_time, notes, created_at) VALUES
--- CS102-01 attendance
-((SELECT id FROM attendance_sessions WHERE session_date = DATE '2024-09-02' AND section_id = (SELECT id FROM sections WHERE section_code = 'CS102-01')),
- (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), 'PRESENT', '2024-09-02 08:55:00', '2024-09-02 10:32:00', 'Arrived early to assist as TA.', CURRENT_TIMESTAMP),
+-- CS102-01 (2025 S1) Week 1 attendance (Oct 7 - COMPLETED)
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-10-07' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), 'PRESENT', '2025-10-07 08:55:00', '2025-10-07 10:32:00', NULL, CURRENT_TIMESTAMP),
 
-((SELECT id FROM attendance_sessions WHERE session_date = DATE '2024-09-02' AND section_id = (SELECT id FROM sections WHERE section_code = 'CS102-01')),
- (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), 'PRESENT', '2024-09-02 09:05:00', '2024-09-02 10:30:00', NULL, CURRENT_TIMESTAMP),
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-10-07' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), 'PRESENT', '2025-10-07 09:02:00', '2025-10-07 10:30:00', NULL, CURRENT_TIMESTAMP),
 
-((SELECT id FROM attendance_sessions WHERE session_date = DATE '2024-09-09' AND section_id = (SELECT id FROM sections WHERE section_code = 'CS102-01')),
- (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), 'PRESENT', '2024-09-09 08:52:00', '2024-09-09 10:31:00', 'Led lab check-ins as TA.', CURRENT_TIMESTAMP),
+-- CS102-01 (2025 S1) Week 2 attendance (Oct 14 - COMPLETED)
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-10-14' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), 'PRESENT', '2025-10-14 08:58:00', '2025-10-14 10:31:00', NULL, CURRENT_TIMESTAMP),
 
-((SELECT id FROM attendance_sessions WHERE session_date = DATE '2024-09-09' AND section_id = (SELECT id FROM sections WHERE section_code = 'CS102-01')),
- (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), 'ABSENT', NULL, NULL, 'Notified instructor of illness.', CURRENT_TIMESTAMP),
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-10-14' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), 'LATE', '2025-10-14 09:18:00', '2025-10-14 10:30:00', 'Traffic delay', CURRENT_TIMESTAMP),
 
--- CS102-02 attendance
-((SELECT id FROM attendance_sessions WHERE session_date = DATE '2024-09-03' AND section_id = (SELECT id FROM sections WHERE section_code = 'CS102-02')),
- (SELECT id FROM users WHERE email = 'student3@smu.edu.sg'), 'PRESENT', '2024-09-03 12:58:00', '2024-09-03 14:28:00', 'Assisted with lab setup as TA.', CURRENT_TIMESTAMP),
+-- CS102-01 (2025 S1) Week 3 attendance (Oct 21 - IN_PROGRESS, partial attendance)
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-10-21' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), 'PRESENT', '2025-10-21 08:56:00', NULL, NULL, CURRENT_TIMESTAMP),
 
-((SELECT id FROM attendance_sessions WHERE session_date = DATE '2024-09-03' AND section_id = (SELECT id FROM sections WHERE section_code = 'CS102-02')),
- (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), 'PRESENT', '2024-09-03 13:02:00', '2024-09-03 14:30:00', NULL, CURRENT_TIMESTAMP),
+-- CS102-02 (2025 S1) Week 1 attendance (Oct 10 - COMPLETED)
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-10-10' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), 'PRESENT', '2025-10-10 14:58:00', '2025-10-10 16:28:00', NULL, CURRENT_TIMESTAMP),
 
--- CS102-03 attendance
-((SELECT id FROM attendance_sessions WHERE session_date = DATE '2024-09-06' AND section_id = (SELECT id FROM sections WHERE section_code = 'CS102-03')),
- (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), 'PRESENT', '2024-09-06 14:55:00', '2024-09-06 16:32:00', 'Led tutorial session as TA.', CURRENT_TIMESTAMP),
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-10-10' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student3@smu.edu.sg'), 'PRESENT', '2025-10-10 15:02:00', '2025-10-10 16:30:00', NULL, CURRENT_TIMESTAMP),
 
-((SELECT id FROM attendance_sessions WHERE session_date = DATE '2024-09-06' AND section_id = (SELECT id FROM sections WHERE section_code = 'CS102-03')),
- (SELECT id FROM users WHERE email = 'student3@smu.edu.sg'), 'LATE', '2024-09-06 15:10:00', '2024-09-06 16:30:00', 'Traffic delay', CURRENT_TIMESTAMP);
+-- CS102-02 (2025 S1) Week 2 attendance (Oct 17 - COMPLETED)
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-10-17' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student1@smu.edu.sg'), 'LATE', '2025-10-17 15:17:00', '2025-10-17 16:28:00', 'Appointment ran late', CURRENT_TIMESTAMP),
+
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-10-17' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student3@smu.edu.sg'), 'ABSENT', NULL, NULL, 'Medical certificate provided', CURRENT_TIMESTAMP),
+
+-- CS102-01 (2025 S2) Past sessions (June - COMPLETED)
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-06-04' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), 'PRESENT', '2025-06-04 12:58:00', '2025-06-04 14:32:00', NULL, CURRENT_TIMESTAMP),
+
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-06-04' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student3@smu.edu.sg'), 'PRESENT', '2025-06-04 13:01:00', '2025-06-04 14:30:00', NULL, CURRENT_TIMESTAMP),
+
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-06-11' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student2@smu.edu.sg'), 'PRESENT', '2025-06-11 12:55:00', '2025-06-11 14:28:00', NULL, CURRENT_TIMESTAMP),
+
+((SELECT id FROM attendance_sessions WHERE session_date = DATE '2025-06-11' LIMIT 1),
+ (SELECT id FROM users WHERE email = 'student3@smu.edu.sg'), 'LATE', '2025-06-11 13:16:00', '2025-06-11 14:30:00', 'Bus was late', CURRENT_TIMESTAMP);
 
 -- =====================================================
 -- VERIFICATION

@@ -1,12 +1,13 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './AuthContext'
 import Login from './Login'
-import Dashboard from './Dashboard'
+import Home from './Home'
 import Students from './Students'
 import AddStudent from './AddStudent'
 import Classes from './Classes'
 import TeachingAssistants from './TeachingAssistants'
 import Instructors from './Instructors'
+import Attendance from './Attendance'
 import './styles.css'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -31,7 +32,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (user) {
-    return <Navigate to="/dashboard" />
+    return <Navigate to="/home" />
   }
 
   return children
@@ -45,9 +46,9 @@ function AppRoutes() {
           <Login />
         </PublicRoute>
       } />
-      <Route path="/dashboard" element={
+      <Route path="/home" element={
         <ProtectedRoute>
-          <Dashboard />
+          <Home />
         </ProtectedRoute>
       } />
       <Route path="/students" element={
@@ -73,6 +74,11 @@ function AppRoutes() {
       <Route path="/instructors" element={
         <ProtectedRoute>
           <Instructors />
+        </ProtectedRoute>
+      } />
+      <Route path="/attendance" element={
+        <ProtectedRoute>
+          <Attendance />
         </ProtectedRoute>
       } />
       <Route path="/" element={<Navigate to="/login" />} />

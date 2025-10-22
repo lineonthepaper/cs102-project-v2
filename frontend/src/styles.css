@@ -807,6 +807,51 @@ body {
   background: #f8f8f8;
   color: #374151;
   border: 1px solid #e5e5e5;
+  display: inline-block;
+}
+
+/* Attendance status badges */
+.status-badge.status-present {
+  background: white;
+  color: black;
+  border-color: #e5e5e5;
+}
+
+.status-badge.status-late {
+  background: white;
+  color: black;
+  border-color: #e5e5e5;
+}
+
+.status-badge.status-absent {
+  background: white;
+  color: black;
+  border-color: #e5e5e5;
+}
+
+/* Session status badges */
+.status-badge.status-scheduled {
+  background: white;
+  color: black;
+  border-color: #e5e5e5;
+}
+
+.status-badge.status-in_progress {
+  background: white;
+  color: black;
+  border-color: #e5e5e5;
+}
+
+.status-badge.status-completed {
+  background: white;
+  color: black;
+  border-color: #e5e5e5;
+}
+
+.status-badge.status-cancelled {
+  background: white;
+  color: black;
+  border-color: #e5e5e5;
 }
 
 .btn-small {
@@ -815,17 +860,46 @@ body {
   font-weight: 500;
 }
 
+.btn-success {
+  background-color: white !important;
+  color: black !important;
+  border: 2px solid #e5e5e5 !important;
+}
+
+.btn-success:hover {
+  background-color: #f3f4f6 !important;
+  border-color: #d1d5db !important;
+}
+
+.btn-danger {
+  background-color: white !important;
+  color: black !important;
+  border: 2px solid #e5e5e5 !important;
+}
+
+.btn-danger:hover {
+  background-color: #f3f4f6 !important;
+  border-color: #d1d5db !important;
+}
+
+
 .btn-action {
   background: white !important;
   color: black !important;
   border-color: black !important;
   box-shadow: none;
+  outline: none;
 }
 
 .btn-action:hover {
   background: black !important;
   color: white !important;
   border-color: black !important;
+}
+
+.btn-action:focus {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 .action-buttons {
