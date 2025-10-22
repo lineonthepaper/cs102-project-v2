@@ -12,6 +12,11 @@ Face recognition-based attendance system with Java Spring Boot backend and React
 
 ### 1. Configure Environment
 
+There are **3 configuration files** to set up:
+
+#### a) Root Environment File (`/env`)
+Used by backend startup scripts to set database connection variables.
+
 **macOS/Linux:**
 ```bash
 cp env.example env
@@ -24,9 +29,19 @@ copy env.example env
 
 Edit `env` with your Supabase credentials:
 - API URL and keys: Supabase Dashboard → Project Settings → API
-- Database credentials: Project Settings → Database → Connection String (use Session Pooler)
+- Database credentials: Project Settings → Database → Connection String (use **Session Pooler**)
 
-⚠️ **Never commit the `env` file!**
+#### b) Frontend Environment File (`/frontend/.env`)
+Already configured with default values. Update if using a different Supabase project:
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+#### c) Backend Application Properties (`/backend/src/main/resources/application.properties`)
+Already configured to use environment variables from `/env` file. No changes needed.
+
+⚠️ **Never commit the `/env` or `/frontend/.env` files!**
 
 ### 2. Run Application
 
