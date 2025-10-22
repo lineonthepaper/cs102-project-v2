@@ -6,7 +6,7 @@ import { supabase } from './supabase'
 function Dashboard() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [userRole, setUserRole] = useState('Instructor')
+  const [userRole, setUserRole] = useState('Loading...')
 
   useEffect(() => {
     const fetchUserRole = async () => {
@@ -19,11 +19,20 @@ function Dashboard() {
             .maybeSingle()
 
           if (data && !error) {
+            // Priority: Instructor > Teaching Assistant > Student
             if (data.is_instructor) setUserRole('Instructor')
             else if (data.is_ta) setUserRole('Teaching Assistant')
+            else if (data.is_student) setUserRole('Student')
+            else setUserRole('User') // No role assigned
+          } else if (!data) {
+            // User not in database - treat as Admin for authenticated system users
+            setUserRole('Admin')
+          } else {
+            setUserRole('User')
           }
         } catch (err) {
           console.error('Error fetching user role:', err)
+          setUserRole('User')
         }
       }
     }

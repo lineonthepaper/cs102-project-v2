@@ -1,134 +1,101 @@
 # Smart Attendance System
 
-Face recognition-based attendance system built with Java Spring Boot and React.
+Face recognition-based attendance system with Java Spring Boot backend and React frontend.
 
-## 🚀 Quick Start
+## Prerequisites
 
-### Prerequisites
 - Java 21
-- Node.js & npm
-- PostgreSQL (via Supabase)
+- Node.js 18+
+- Supabase account
 
-### 1. Setup Environment
+## Setup
 
-**Important:** Copy the example environment file and add your credentials:
+### 1. Configure Environment
 
+**macOS/Linux:**
 ```bash
 cp env.example env
 ```
 
-Then edit `env` with your Supabase credentials:
-- Get API keys from: Supabase Dashboard → Project Settings → API
-- Get database password from: Project Settings → Database → Connection String
-- Use **direct connection** (db.xxx.supabase.co), NOT pooler
-
-**⚠️ Security:** The `env` file contains sensitive credentials and is excluded from Git!
-
-### 2. Run the Application
-
-From the project root:
-
-```bash
-# Run both backend and frontend
-./run-all.sh
-
-# Or run separately:
-./run-backend.sh    # Backend on http://localhost:8080
-./run-frontend.sh   # Frontend on http://localhost:5173
+**Windows:**
+```cmd
+copy env.example env
 ```
 
-The application will be available at **http://localhost:5173**
+Edit `env` with your Supabase credentials:
+- API URL and keys: Supabase Dashboard → Project Settings → API
+- Database credentials: Project Settings → Database → Connection String (use Session Pooler)
 
-## 📁 Project Structure
+⚠️ **Never commit the `env` file!**
+
+### 2. Run Application
+
+**macOS/Linux:**
+```bash
+# Both services
+./scripts/run-all.sh
+
+# Individual services
+./scripts/run-backend.sh
+./scripts/run-frontend.sh
+```
+
+**Windows:**
+```cmd
+# Both services
+scripts\run-all.bat
+
+# Individual services
+scripts\run-backend.bat
+scripts\run-frontend.bat
+```
+
+**Access:** http://localhost:5173
+
+## Ports
+
+- Backend: `8080`
+- Frontend: `5173`
+
+## Project Structure
 
 ```
 CS102 V2/
-├── README.md              # This file
-├── env.example            # Environment template (safe to commit)
-├── env                    # Your credentials (DO NOT COMMIT!)
-│
-├── run-all.sh            # Run both services
-├── run-backend.sh        # Run backend only
-├── run-frontend.sh       # Run frontend only
-│
-├── backend/              # Java Spring Boot backend
-├── frontend/             # React + TypeScript frontend
-│
-├── documents/            # Documentation
-│   ├── techstack.md     # Technology stack
-│   └── features.md      # Feature specifications
-│
-├── scripts/              # Build and run scripts
-└── dbschema.sql         # Database schema
+├── backend/              # Spring Boot API
+├── frontend/             # React UI
+├── database/             # SQL schemas
+├── scripts/              # Run scripts (.sh for macOS/Linux, .bat for Windows)
+└── env                   # Config (DO NOT COMMIT)
 ```
 
-## 🔧 Configuration
+## Development
 
-### Database Connection
-- **Type**: Supabase PostgreSQL (direct connection)
-- **Port**: 5432
-- **Credentials**: Set in `env` file
-
-### Application Ports
-- **Backend**: 8080
-- **Frontend**: 5173
-
-## 🛠️ Development
-
-### Backend (Java + Spring Boot)
+### Backend
 ```bash
 cd backend
-./gradlew build        # Build
-./gradlew bootRun      # Run
+./gradlew build      # macOS/Linux
+gradlew.bat build    # Windows
 ```
 
-### Frontend (React + Vite)
+### Frontend
 ```bash
 cd frontend
-npm install            # Install dependencies
-npm run build          # Build for production
-npm run dev            # Development server
+npm install
+npm run dev
 ```
 
-## 📚 Documentation
+## Troubleshooting
 
-- `documents/techstack.md` - Technology stack details
-- `documents/features.md` - Feature specifications
-- `dbschema.sql` - Database schema
+**Port in use:**
+- macOS/Linux: `lsof -ti:8080 | xargs kill -9`
+- Windows: `netstat -ano | findstr :8080` then `taskkill /PID <PID> /F`
 
-## 🆘 Troubleshooting
+**Database connection failed:**
+- Check credentials in `env`
+- Verify Supabase project is active
+- Use Session Pooler connection string
 
-**Backend fails to start:**
-1. Check Java version: `java -version` (need Java 21)
-2. Verify `env` file exists and has correct credentials
-3. Ensure you're using direct connection (db.xxx.supabase.co)
-
-**Frontend fails to build:**
-1. Run `npm install` in frontend directory
-2. Check Node.js version: `node --version`
-
-**Database connection issues:**
-1. Verify password in `env` file is correct
-2. Make sure Supabase project is not paused
-3. Check you're using direct connection, not pooler
-
-**Port already in use:**
+**Java version mismatch:**
 ```bash
-lsof -ti:8080 | xargs kill -9  # Backend
-lsof -ti:5173 | xargs kill -9  # Frontend
+java -version  # Should show 21.x
 ```
-
-## 🔒 Security
-
-- `env` file contains sensitive credentials - **never commit it!**
-- Use `env.example` as a template
-- The `.gitignore` ensures `env` is excluded from version control
-- Different credentials should be used for development and production
-
-## 📝 License
-
-[Add your license here]
-
-## 👥 Contributors
-
-[Add contributors here]

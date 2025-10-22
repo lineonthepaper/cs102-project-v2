@@ -26,6 +26,8 @@ function TeachingAssistants() {
   const [checkingTAEmail, setCheckingTAEmail] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [taCourseFilter, setTaCourseFilter] = useState('all')
+  const [taType, setTaType] = useState('student') // 'student' or 'instructor'
+  const [modalKey, setModalKey] = useState(0)
 
   useEffect(() => {
     fetchInitialData()
@@ -113,7 +115,6 @@ function TeachingAssistants() {
     if (!email) {
       setTaCandidate(null)
       setTaEmailError('')
-      setNewTAPassword('')
       return
     }
 
@@ -133,24 +134,36 @@ function TeachingAssistants() {
 
       if (!existingUser) {
         setTaCandidate(null)
-        setTaEmailError('No user found with this email address.')
+        if (taType === 'instructor') {
+          setTaEmailError('No instructor found with this email address.')
+        } else {
+          setTaEmailError('No student found with this email address.')
+        }
       } else {
+        // Validate the user type matches selection
+        if (taType === 'instructor' && !existingUser.is_instructor) {
+          setTaCandidate(null)
+          setTaEmailError('This user is not an instructor. Please select "Student" or use a different email.')
+          return
+        }
+        if (taType === 'student' && !existingUser.is_student) {
+          setTaCandidate(null)
+          setTaEmailError('This user is not a student. Please select "Instructor" or use a different email.')
+          return
+        }
+        
         setTaCandidate(existingUser)
         setTaEmailError('')
-        if (existingUser.auth_id) {
-          setNewTAPassword('')
-        }
       }
     } catch (error) {
       console.error('Error checking TA email:', error)
-      setTaEmailError('Failed to look up user. Please try again later.')
+      setTaEmailError('Failed to look up user. Please try again.')
       setTaCandidate(null)
     } finally {
       setCheckingTAEmail(false)
     }
   }
 
-  
   const addTA = async () => {
     const email = newTAEmail.trim()
     const password = newTAPassword.trim()
@@ -160,6 +173,10 @@ function TeachingAssistants() {
       return
     }
 
+    if (taType === 'student' && !password) {
+      alert('Please provide a password for the student TA account')
+      return
+    }
 
     try {
       let existingUser = taCandidate
@@ -180,7 +197,7 @@ function TeachingAssistants() {
       }
 
       if (!existingUser) {
-        alert('User with this email not found')
+        alert(`${taType === 'instructor' ? 'Instructor' : 'Student'} with this email not found`)
         return
       }
 
@@ -189,16 +206,20 @@ function TeachingAssistants() {
         return
       }
 
-      let authId = existingUser.auth_id
-
-      const needsPassword = !authId && existingUser.is_student
-
-      if (needsPassword && !password) {
-        alert('Please provide a password to create an authenticated user for this TA.')
+      // Validate user type
+      if (taType === 'instructor' && !existingUser.is_instructor) {
+        alert('This user is not an instructor. Please check the email or select Student.')
+        return
+      }
+      if (taType === 'student' && !existingUser.is_student) {
+        alert('This user is not a student. Please check the email or select Instructor.')
         return
       }
 
-      if (!authId && needsPassword) {
+      let authId = existingUser.auth_id
+
+      // For students without auth_id, create auth account
+      if (taType === 'student' && !authId) {
         const { data: currentSessionData, error: currentSessionError } = await supabase.auth.getSession()
         if (currentSessionError) {
           console.error('Failed to capture current admin session before TA sign up:', currentSessionError)
@@ -234,8 +255,9 @@ function TeachingAssistants() {
         }
       }
 
-      if (!authId && !needsPassword) {
-        alert('Unable to determine login credentials for this user.')
+      // For instructors, they should already have auth_id
+      if (taType === 'instructor' && !authId) {
+        alert('This instructor does not have login credentials. Please contact system administrator.')
         return
       }
 
@@ -257,7 +279,7 @@ function TeachingAssistants() {
 
       // Reset and close modal
       closeAddTAModal()
-      alert('Teaching Assistant account created and enabled.')
+      alert(`Teaching Assistant account created successfully for ${existingUser.first_name} ${existingUser.last_name}.`)
 
     } catch (error) {
       console.error('Error adding TA:', error)
@@ -372,6 +394,18 @@ function TeachingAssistants() {
     setTaCourseFilter('all')
   }
 
+  const openAddTAModal = () => {
+    // Clear all fields before opening
+    setNewTAEmail('')
+    setNewTAPassword('')
+    setTaCandidate(null)
+    setTaEmailError('')
+    setCheckingTAEmail(false)
+    setTaType('student')
+    setModalKey(prev => prev + 1) // Force modal to remount with fresh state
+    setShowAddTAModal(true)
+  }
+
   const closeAddTAModal = () => {
     setShowAddTAModal(false)
     setNewTAEmail('')
@@ -380,6 +414,7 @@ function TeachingAssistants() {
     setTaEmailError('')
     setCheckingTAEmail(false)
     setTaCourseFilter('all')
+    setTaType('student')
   }
 
   const saveTAAssignments = async () => {
@@ -423,8 +458,6 @@ function TeachingAssistants() {
     return <div className="loading">Loading teaching assistants...</div>
   }
 
-  const taNeedsPassword = taCandidate ? (!taCandidate.auth_id && taCandidate.is_student) : false
-
   return (
     <div className="container">
       <div className="page-header">
@@ -437,7 +470,7 @@ function TeachingAssistants() {
       <div className="table-container">
         <div className="table-header-actions">
           <button
-            onClick={() => setShowAddTAModal(true)}
+            onClick={openAddTAModal}
             className="btn btn-primary-small"
           >
             Add Teaching Assistant
@@ -484,7 +517,7 @@ function TeachingAssistants() {
                         onClick={() => removeTA(user)}
                         className="btn btn-small btn-action"
                       >
-                        Remove TA
+                        Remove Teaching Assistant
                       </button>
                     </div>
                   </td>
@@ -576,7 +609,7 @@ function TeachingAssistants() {
       {/* Add TA Modal */}
       {showAddTAModal && (
         <div className="modal-overlay" onClick={closeAddTAModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} key={modalKey}>
             <div className="modal-header">
               <h2>Add Teaching Assistant</h2>
               <button onClick={closeAddTAModal} className="close-button">
@@ -586,7 +619,79 @@ function TeachingAssistants() {
 
             <div className="modal-body">
               <div className="form-group">
-                <label className="form-label">Email Address</label>
+                <label className="form-label">Who are you adding as a TA?</label>
+                <div style={{ 
+                  display: 'flex', 
+                  gap: '0', 
+                  marginTop: '0.5rem',
+                  borderBottom: '1px solid #e5e7eb'
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTaType('student')
+                      setNewTAEmail('')
+                      setNewTAPassword('')
+                      setTaCandidate(null)
+                      setTaEmailError('')
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem 1rem',
+                      border: 'none',
+                      borderBottom: taType === 'student' ? '2px solid #111827' : '2px solid transparent',
+                      backgroundColor: 'transparent',
+                      fontSize: '0.875rem',
+                      fontWeight: taType === 'student' ? '600' : '400',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      color: taType === 'student' ? '#111827' : '#6b7280',
+                      outline: 'none',
+                      marginBottom: '-1px',
+                      borderRadius: '0'
+                    }}
+                  >
+                    Student
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTaType('instructor')
+                      setNewTAEmail('')
+                      setNewTAPassword('')
+                      setTaCandidate(null)
+                      setTaEmailError('')
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem 1rem',
+                      border: 'none',
+                      borderBottom: taType === 'instructor' ? '2px solid #111827' : '2px solid transparent',
+                      backgroundColor: 'transparent',
+                      fontSize: '0.875rem',
+                      fontWeight: taType === 'instructor' ? '600' : '400',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      color: taType === 'instructor' ? '#111827' : '#6b7280',
+                      outline: 'none',
+                      marginBottom: '-1px',
+                      borderRadius: '0'
+                    }}
+                  >
+                    Instructor
+                  </button>
+                </div>
+                <small className="form-help" style={{ display: 'block', marginTop: '0.75rem' }}>
+                  {taType === 'student' 
+                    ? 'Students need a password to create their login account.'
+                    : 'Instructors already have login access, no password needed.'}
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  {taType === 'instructor' ? 'Instructor Email' : 'Student Email'}
+                </label>
                 <input
                   type="email"
                   value={newTAEmail}
@@ -597,42 +702,43 @@ function TeachingAssistants() {
                   }}
                   onBlur={handleTAEmailBlur}
                   className="form-input"
-                  placeholder="Enter user's email address"
+                  placeholder={taType === 'instructor' ? 'instructor@example.com' : 'student@example.com'}
+                  autoComplete="off"
                   autoFocus
                 />
-                <small className="form-help">
-                  Enter the email of an existing user to promote them to Teaching Assistant.
-                </small>
                 {checkingTAEmail && (
                   <small className="form-help">Checking user...</small>
                 )}
-                {taCandidate && !taCandidate.is_student && (
-                  <small className="form-help">This user already has instructor access, so no password is required.</small>
+                {taCandidate && (
+                  <small className="form-help">
+                    ✓ Found: {taCandidate.first_name} {taCandidate.last_name}
+                  </small>
                 )}
                 {taEmailError && (
                   <small className="form-help" style={{ color: '#dc2626' }}>{taEmailError}</small>
                 )}
               </div>
 
-              {taNeedsPassword && (
+              {taType === 'student' && (
                 <div className="form-group">
-                  <label className="form-label">Temporary Password</label>
+                  <label className="form-label">Password</label>
                   <input
                     type="password"
                     value={newTAPassword}
                     onChange={(e) => setNewTAPassword(e.target.value)}
                     className="form-input"
-                    placeholder="Provide a password for the new TA account"
+                    placeholder="Create a password for this TA account"
+                    autoComplete="new-password"
                   />
                   <small className="form-help">
-                    This password is used to create the Supabase Auth account. Share it securely with the TA.
+                    This password will be used to create their login account. Share it securely with the TA.
                   </small>
                 </div>
               )}
 
               <div className="form-actions">
                 <button onClick={addTA} className="btn btn-primary">
-                  Add
+                  Add Teaching Assistant
                 </button>
               </div>
             </div>

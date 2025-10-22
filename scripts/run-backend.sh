@@ -20,8 +20,18 @@ while IFS='=' read -r key value; do
 done < ./env
 
 # Map Supabase DB vars to Spring Boot expected vars
-export DATABASE_URL="jdbc:postgresql://${SUPABASE_DB_HOST}:${SUPABASE_DB_PORT}/${SUPABASE_DB_NAME}?sslmode=require"
-export DATABASE_USERNAME="${SUPABASE_DB_USERNAME}"
+# If using pooler, username must be in format postgres.PROJECT_REF
+if [[ "$SUPABASE_DB_HOST" == *"pooler.supabase.com"* ]]; then
+  # Extract project ref from Supabase URL
+  PROJECT_REF=$(echo "${APP_SUPABASE_URL}" | sed -n 's/.*https:\/\/\([^.]*\)\.supabase\.co.*/\1/p')
+  export DATABASE_USERNAME="${SUPABASE_DB_USERNAME}.${PROJECT_REF}"
+  # For pooler, try with additional connection parameters
+  export DATABASE_URL="jdbc:postgresql://${SUPABASE_DB_HOST}:${SUPABASE_DB_PORT}/${SUPABASE_DB_NAME}?sslmode=require&preferQueryMode=simple"
+else
+  export DATABASE_USERNAME="${SUPABASE_DB_USERNAME}"
+  export DATABASE_URL="jdbc:postgresql://${SUPABASE_DB_HOST}:${SUPABASE_DB_PORT}/${SUPABASE_DB_NAME}?sslmode=require"
+fi
+
 export DATABASE_PASSWORD="${SUPABASE_DB_PASSWORD}"
 
 # Map Supabase API vars

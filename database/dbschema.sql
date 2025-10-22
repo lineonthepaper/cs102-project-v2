@@ -64,8 +64,9 @@ CREATE TABLE public.section_enrollments (
 CREATE TABLE public.sections (
   id bigint NOT NULL DEFAULT nextval('sections_id_seq'::regclass),
   course_id bigint NOT NULL,
-  section_code text NOT NULL UNIQUE,
-  term_label text,
+  section_code text NOT NULL,
+  year integer,
+  semester integer CHECK (semester IN (1, 2)),
   meeting_day smallint CHECK (meeting_day >= 0 AND meeting_day <= 6),
   start_time time without time zone,
   end_time time without time zone,
@@ -76,7 +77,8 @@ CREATE TABLE public.sections (
   created_at timestamp without time zone NOT NULL DEFAULT timezone('utc'::text, now()),
   updated_at timestamp without time zone,
   CONSTRAINT sections_pkey PRIMARY KEY (id),
-  CONSTRAINT sections_course_id_fkey FOREIGN KEY (course_id) REFERENCES public.courses(id)
+  CONSTRAINT sections_course_id_fkey FOREIGN KEY (course_id) REFERENCES public.courses(id),
+  CONSTRAINT sections_section_code_year_semester_key UNIQUE (section_code, year, semester)
 );
 CREATE TABLE public.ta_assignments (
   id bigint NOT NULL DEFAULT nextval('ta_assignments_id_seq'::regclass),

@@ -28,8 +28,6 @@ INSERT INTO users (
     created_at,
     updated_at
 ) VALUES
-('I0000001', 'instructor1@smu.edu.sg', 'Instructor', '1', true, false, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('I0000002', 'instructor2@smu.edu.sg', 'Instructor', '2', true, false, true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 ('S0000001', 'student1@smu.edu.sg', 'Student', '1', true, true, false, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 ('S0000002', 'student2@smu.edu.sg', 'Student', '2', true, true, false, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 ('S0000003', 'student3@smu.edu.sg', 'Student', '3', true, true, false, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
@@ -47,41 +45,24 @@ INSERT INTO courses (code, title, description, created_at) VALUES
 -- 3. SECTIONS (with updated schedule columns)
 -- =====================================================
 
-INSERT INTO sections (course_id, section_code, term_label, meeting_day, start_time, end_time, location, max_capacity, day_of_week, schedule, created_at) VALUES
--- CS102 Sections
-((SELECT id FROM courses WHERE code = 'CS102'), 'CS102-01', 'Fall 2024', 1, '09:00:00', '10:30:00', 'Room 102', 40, 'Monday', 'Monday 09:00-10:30', CURRENT_TIMESTAMP),
-((SELECT id FROM courses WHERE code = 'CS102'), 'CS102-02', 'Fall 2024', 3, '13:00:00', '14:30:00', 'Room 202', 35, 'Wednesday', 'Wednesday 13:00-14:30', CURRENT_TIMESTAMP),
-((SELECT id FROM courses WHERE code = 'CS102'), 'CS102-03', 'Fall 2024', 5, '15:00:00', '16:30:00', 'Room 301', 30, 'Friday', 'Friday 15:00-16:30', CURRENT_TIMESTAMP),
+INSERT INTO sections (course_id, section_code, year, semester, meeting_day, start_time, end_time, location, max_capacity, day_of_week, schedule, created_at) VALUES
+-- CS102 Sections - Different terms
+((SELECT id FROM courses WHERE code = 'CS102' LIMIT 1), 'CS102-01', 2025, 1, 1, '09:00:00', '10:30:00', 'Room 102', 40, 'Monday', 'Monday 09:00-10:30', CURRENT_TIMESTAMP),
+((SELECT id FROM courses WHERE code = 'CS102' LIMIT 1), 'CS102-01', 2025, 2, 3, '13:00:00', '14:30:00', 'Room 202', 35, 'Wednesday', 'Wednesday 13:00-14:30', CURRENT_TIMESTAMP),
+((SELECT id FROM courses WHERE code = 'CS102' LIMIT 1), 'CS102-02', 2025, 1, 5, '15:00:00', '16:30:00', 'Room 301', 30, 'Friday', 'Friday 15:00-16:30', CURRENT_TIMESTAMP),
 
--- CS201 Sections
-((SELECT id FROM courses WHERE code = 'CS201'), 'CS201-01', 'Fall 2024', 2, '10:00:00', '11:30:00', 'Room 105', 45, 'Tuesday', 'Tuesday 10:00-11:30', CURRENT_TIMESTAMP),
-((SELECT id FROM courses WHERE code = 'CS201'), 'CS201-02', 'Fall 2024', 4, '14:00:00', '15:30:00', 'Room 205', 40, 'Thursday', 'Thursday 14:00-15:30', CURRENT_TIMESTAMP),
+-- CS201 Sections - Different terms
+((SELECT id FROM courses WHERE code = 'CS201' LIMIT 1), 'CS201-01', 2025, 1, 2, '10:00:00', '11:30:00', 'Room 105', 45, 'Tuesday', 'Tuesday 10:00-11:30', CURRENT_TIMESTAMP),
+((SELECT id FROM courses WHERE code = 'CS201' LIMIT 1), 'CS201-01', 2026, 1, 4, '14:00:00', '15:30:00', 'Room 205', 40, 'Thursday', 'Thursday 14:00-15:30', CURRENT_TIMESTAMP),
 
 -- CS301 Sections
-((SELECT id FROM courses WHERE code = 'CS301'), 'CS301-01', 'Fall 2024', 1, '11:00:00', '12:30:00', 'Room 103', 35, 'Monday', 'Monday 11:00-12:30', CURRENT_TIMESTAMP);
+((SELECT id FROM courses WHERE code = 'CS301' LIMIT 1), 'CS301-01', 2025, 2, 1, '11:00:00', '12:30:00', 'Room 103', 35, 'Monday', 'Monday 11:00-12:30', CURRENT_TIMESTAMP);
 
 -- =====================================================
 -- 4. SECTION ASSIGNMENTS (legacy system - keep for compatibility)
 -- =====================================================
 
-INSERT INTO section_assignments (section_id, user_id, role, assigned_at, is_active) VALUES
--- CS102-01 assignments
-((SELECT id FROM sections WHERE section_code = 'CS102-01'), (SELECT id FROM users WHERE email = 'instructor1@smu.edu.sg'), 'INSTRUCTOR', CURRENT_TIMESTAMP, true),
-
--- CS102-02 assignments
-((SELECT id FROM sections WHERE section_code = 'CS102-02'), (SELECT id FROM users WHERE email = 'instructor2@smu.edu.sg'), 'INSTRUCTOR', CURRENT_TIMESTAMP, true),
-
--- CS102-03 assignments
-((SELECT id FROM sections WHERE section_code = 'CS102-03'), (SELECT id FROM users WHERE email = 'instructor1@smu.edu.sg'), 'INSTRUCTOR', CURRENT_TIMESTAMP, true),
-
--- CS201-01 assignments
-((SELECT id FROM sections WHERE section_code = 'CS201-01'), (SELECT id FROM users WHERE email = 'instructor1@smu.edu.sg'), 'INSTRUCTOR', CURRENT_TIMESTAMP, true),
-
--- CS201-02 assignments
-((SELECT id FROM sections WHERE section_code = 'CS201-02'), (SELECT id FROM users WHERE email = 'instructor2@smu.edu.sg'), 'INSTRUCTOR', CURRENT_TIMESTAMP, true),
-
--- CS301-01 assignments
-((SELECT id FROM sections WHERE section_code = 'CS301-01'), (SELECT id FROM users WHERE email = 'instructor1@smu.edu.sg'), 'INSTRUCTOR', CURRENT_TIMESTAMP, true);
+-- No instructors in test data - sections available for assignment
 
 -- =====================================================
 -- 5. TA ASSIGNMENTS (intentionally left empty for manual TA onboarding tests)

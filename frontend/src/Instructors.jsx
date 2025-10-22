@@ -29,6 +29,7 @@ function Instructors() {
   const [newInstructorFirstName, setNewInstructorFirstName] = useState('')
   const [newInstructorLastName, setNewInstructorLastName] = useState('')
   const [addingInstructor, setAddingInstructor] = useState(false)
+  const [addModalKey, setAddModalKey] = useState(0)
 
   useEffect(() => {
     fetchInitialData()
@@ -114,6 +115,16 @@ function Instructors() {
     setSelectedSections([])
     setSectionSearchTerm('')
     setModalCourseFilter('all')
+  }
+
+  const openAddModal = () => {
+    // Clear all fields before opening
+    setNewInstructorEmail('')
+    setNewInstructorPassword('')
+    setNewInstructorFirstName('')
+    setNewInstructorLastName('')
+    setAddModalKey(prev => prev + 1) // Force modal to remount with fresh state
+    setShowAddModal(true)
   }
 
   const closeAddModal = () => {
@@ -459,7 +470,7 @@ function Instructors() {
       <div className="table-container">
         <div className="table-header-actions">
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={openAddModal}
             className="btn btn-primary-small"
           >
             Add Instructor
@@ -591,7 +602,7 @@ function Instructors() {
 
       {showAddModal && (
         <div className="modal-overlay" onClick={closeAddModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} key={addModalKey}>
             <div className="modal-header">
               <h2>Add Instructor</h2>
               <button onClick={closeAddModal} className="close-button">
@@ -608,6 +619,7 @@ function Instructors() {
                   onChange={(e) => setNewInstructorFirstName(e.target.value)}
                   className="form-input"
                   placeholder="Enter first name"
+                  autoComplete="off"
                 />
               </div>
 
@@ -619,6 +631,7 @@ function Instructors() {
                   onChange={(e) => setNewInstructorLastName(e.target.value)}
                   className="form-input"
                   placeholder="Enter last name"
+                  autoComplete="off"
                 />
               </div>
 
@@ -630,6 +643,7 @@ function Instructors() {
                   onChange={(e) => setNewInstructorEmail(e.target.value)}
                   className="form-input"
                   placeholder="Enter instructor email address"
+                  autoComplete="off"
                 />
               </div>
 
@@ -641,6 +655,7 @@ function Instructors() {
                   onChange={(e) => setNewInstructorPassword(e.target.value)}
                   className="form-input"
                   placeholder="Provide a temporary password"
+                  autoComplete="new-password"
                 />
                 <small className="form-help">
                   Instructors can sign in immediately using this password. Share it securely and encourage them to change it after the first login.

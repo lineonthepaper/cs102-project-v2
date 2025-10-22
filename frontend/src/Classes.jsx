@@ -27,6 +27,8 @@ function Classes() {
   const [sectionForm, setSectionForm] = useState({
     course_id: '',
     section_code: '',
+    year: '',
+    semester: '',
     // Detailed schedule fields
     day_of_week: '',
     start_time: '',
@@ -42,6 +44,16 @@ function Classes() {
   const [sortOrder, setSortOrder] = useState('asc')
   const [courseFilter, setCourseFilter] = useState('all')
   const [dayFilter, setDayFilter] = useState('all')
+  const [yearFilter, setYearFilter] = useState('all')
+  const [semesterFilter, setSemesterFilter] = useState('all')
+
+  // Generate year options (2025-2030)
+  const yearOptions = []
+  for (let year = 2025; year <= 2030; year++) {
+    yearOptions.push(year)
+  }
+  
+  const semesterOptions = [1, 2]
 
   useEffect(() => {
     fetchInitialData()
@@ -49,7 +61,7 @@ function Classes() {
 
   useEffect(() => {
     filterAndSortData()
-  }, [courseList, sectionList, searchTerm, sortBy, sortOrder, courseFilter, dayFilter, activeTab])
+  }, [courseList, sectionList, searchTerm, sortBy, sortOrder, courseFilter, dayFilter, yearFilter, semesterFilter, activeTab])
 
   const fetchInitialData = async () => {
     try {
@@ -105,6 +117,7 @@ function Classes() {
           section.section_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
           section.schedule?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           section.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          section.year?.toString().includes(searchTerm) ||
           section.courses?.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           section.courses?.title?.toLowerCase().includes(searchTerm.toLowerCase())
         )
@@ -130,6 +143,20 @@ function Classes() {
           }
           return false
         })
+      }
+
+      // Apply year filter
+      if (yearFilter !== 'all') {
+        filtered = filtered.filter(section =>
+          section.year === parseInt(yearFilter)
+        )
+      }
+
+      // Apply semester filter
+      if (semesterFilter !== 'all') {
+        filtered = filtered.filter(section =>
+          section.semester === parseInt(semesterFilter)
+        )
       }
 
       // Apply sorting
@@ -289,6 +316,45 @@ function Classes() {
     setFilteredSections(data || [])
   }
 
+  // Auto-generate section code based on course, year, and semester
+  useEffect(() => {
+    if (sectionForm.course_id && sectionForm.year && sectionForm.semester) {
+      const selectedCourse = courseList.find(c => c.id === parseInt(sectionForm.course_id))
+      if (!selectedCourse) return
+
+      // Find all sections with the same course_id, year, and semester
+      // Exclude the current section being edited
+      const sameCourseTermSections = sectionList.filter(s => 
+        s.course_id === parseInt(sectionForm.course_id) && 
+        s.year === parseInt(sectionForm.year) &&
+        s.semester === parseInt(sectionForm.semester) &&
+        (!editingSection || s.id !== editingSection.id)
+      )
+
+      // Extract section numbers and find the highest
+      let maxNumber = 0
+      sameCourseTermSections.forEach(section => {
+        const match = section.section_code.match(/-(\d+)$/)
+        if (match) {
+          const num = parseInt(match[1])
+          if (num > maxNumber) maxNumber = num
+        }
+      })
+
+      // Generate next section code
+      const nextNumber = String(maxNumber + 1).padStart(2, '0')
+      const newSectionCode = `${selectedCourse.code}-${nextNumber}`
+      
+      // Only update if the section code has changed or it's a new section
+      if (sectionForm.section_code !== newSectionCode) {
+        setSectionForm(prev => ({
+          ...prev,
+          section_code: newSectionCode
+        }))
+      }
+    }
+  }, [sectionForm.course_id, sectionForm.year, sectionForm.semester, courseList, sectionList, editingSection])
+
   const saveSection = async () => {
     try {
       // Generate formatted schedule string from detailed inputs
@@ -299,6 +365,8 @@ function Classes() {
       const sectionData = {
         course_id: sectionForm.course_id,
         section_code: sectionForm.section_code,
+        year: sectionForm.year,
+        semester: sectionForm.semester,
         schedule: formattedSchedule, // Legacy format for backward compatibility
         // New detailed fields (if they exist in database)
         day_of_week: sectionForm.day_of_week,
@@ -311,6 +379,11 @@ function Classes() {
       const dbData = {
         course_id: sectionData.course_id,
         section_code: sectionData.section_code,
+        year: sectionData.year,
+        semester: sectionData.semester,
+        day_of_week: sectionData.day_of_week,
+        start_time: sectionData.start_time,
+        end_time: sectionData.end_time,
         schedule: sectionData.schedule,
         location: sectionData.location
       }
@@ -381,6 +454,8 @@ function Classes() {
     setSectionForm({
       course_id: section.course_id || '',
       section_code: section.section_code || '',
+      year: section.year || '',
+      semester: section.semester || '',
       day_of_week: dayOfWeek,
       start_time: startTime,
       end_time: endTime,
@@ -394,6 +469,8 @@ function Classes() {
     setSectionForm({
       course_id: '',
       section_code: '',
+      year: '',
+      semester: '',
       day_of_week: '',
       start_time: '',
       end_time: '',
@@ -585,6 +662,34 @@ function Classes() {
                     <option value="Sunday">Sunday</option>
                   </select>
                 </div>
+                <div className="filter-block">
+                  <label className="filter-label" htmlFor="sections-year-filter">Year</label>
+                  <select
+                    id="sections-year-filter"
+                    value={yearFilter}
+                    onChange={(e) => setYearFilter(e.target.value)}
+                    className="filter-select"
+                  >
+                    <option value="all">All Years</option>
+                    {yearOptions.map(year => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filter-block">
+                  <label className="filter-label" htmlFor="sections-semester-filter">Semester</label>
+                  <select
+                    id="sections-semester-filter"
+                    value={semesterFilter}
+                    onChange={(e) => setSemesterFilter(e.target.value)}
+                    className="filter-select"
+                  >
+                    <option value="all">All Semesters</option>
+                    {semesterOptions.map(sem => (
+                      <option key={sem} value={sem}>Semester {sem}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -618,6 +723,18 @@ function Classes() {
                       Course {getSortIcon('course_id')}
                     </th>
                     <th
+                      onClick={() => handleSort('year')}
+                      className="sortable"
+                    >
+                      Year {getSortIcon('year')}
+                    </th>
+                    <th
+                      onClick={() => handleSort('semester')}
+                      className="sortable"
+                    >
+                      Semester {getSortIcon('semester')}
+                    </th>
+                    <th
                       onClick={() => handleSort('day_of_week')}
                       className="sortable"
                     >
@@ -649,6 +766,8 @@ function Classes() {
                     <tr key={section.id}>
                       <td>{section.section_code}</td>
                       <td>{section.courses?.code} - {section.courses?.title}</td>
+                      <td>{section.year || 'Not set'}</td>
+                      <td>{section.semester ? `Semester ${section.semester}` : 'Not set'}</td>
                       <td>
                         {(() => {
                           // Prefer day_of_week field, fall back to parsing legacy schedule
@@ -811,16 +930,36 @@ function Classes() {
                 </select>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Section Code</label>
-                <input
-                  type="text"
-                  value={sectionForm.section_code}
-                  onChange={(e) => setSectionForm({...sectionForm, section_code: e.target.value})}
-                  className="form-input"
-                  placeholder="e.g., CS102-01"
-                  required
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Year</label>
+                  <select
+                    value={sectionForm.year}
+                    onChange={(e) => setSectionForm({...sectionForm, year: e.target.value})}
+                    className="form-input"
+                    required
+                  >
+                    <option value="">Select Year</option>
+                    {yearOptions.map(year => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Semester</label>
+                  <select
+                    value={sectionForm.semester}
+                    onChange={(e) => setSectionForm({...sectionForm, semester: e.target.value})}
+                    className="form-input"
+                    required
+                  >
+                    <option value="">Select Semester</option>
+                    {semesterOptions.map(sem => (
+                      <option key={sem} value={sem}>Semester {sem}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="form-group">
@@ -883,7 +1022,7 @@ function Classes() {
               </div>
 
               
-              <div className="form-actions">
+              <div className="form-actions" style={{ marginTop: '1rem', marginBottom: '0' }}>
                 <button onClick={saveSection} className="btn btn-primary">
                   {editingSection ? 'Update' : 'Add'} Section
                 </button>
