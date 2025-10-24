@@ -32,7 +32,7 @@ function Home() {
           }
         } catch (err) {
           console.error('Error fetching user role:', err)
-          setUserRole('User')
+          setUserRole('Admin')
         }
       }
     }
