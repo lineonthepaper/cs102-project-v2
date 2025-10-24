@@ -4,9 +4,14 @@ import com.smartattendance.dto.request.CreateStudentRequest;
 import com.smartattendance.dto.request.UpdateEnrollmentRequest;
 import com.smartattendance.dto.response.*;
 import com.smartattendance.entity.*;
+import com.smartattendance.exception.DuplicateEmailException;
+import com.smartattendance.exception.ResourceNotFoundException;
+import com.smartattendance.exception.UserNotFoundException;
 import com.smartattendance.repository.*;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +21,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class StudentService {
+
+    private static final Logger logger = LoggerFactory.getLogger(StudentService.class);
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -41,10 +48,14 @@ public class StudentService {
 
     @Transactional(readOnly = true)
     public List<StudentDTO> getAllStudents() {
+        logger.debug("Fetching all students from database");
+        
         // Fetch all students
         List<User> students = userRepository.findAll().stream()
                 .filter(u -> u.getIsStudent())
                 .collect(Collectors.toList());
+        
+        logger.debug("Found {} students in database", students.size());
 
         // Collect all student IDs
         List<String> studentIds = students.stream()
@@ -81,36 +92,50 @@ public class StudentService {
 
     @Transactional
     public StudentDTO createStudent(CreateStudentRequest request) {
+        logger.info("Creating new student with email: {}", request.getEmail());
+        
         // Check if student already exists
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
-            throw new RuntimeException("A student with this email address already exists in the system.");
+            logger.warn("Attempted to create student with duplicate email: {}", request.getEmail());
+            throw new DuplicateEmailException("A student with email " + request.getEmail() + " already exists");
         }
 
-        // Use native SQL to insert student so database trigger can generate the ID
-        String sql = "INSERT INTO users (email, first_name, last_name, is_student, is_instructor, is_ta, enabled, created_at) " +
-                     "VALUES (:email, :firstName, :lastName, true, false, false, true, CURRENT_TIMESTAMP) " +
-                     "RETURNING id";
-        
-        String generatedId = (String) entityManager.createNativeQuery(sql)
-                .setParameter("email", request.getEmail())
-                .setParameter("firstName", request.getFirstName())
-                .setParameter("lastName", request.getLastName())
-                .getSingleResult();
+        try {
+            // Use native SQL to insert student so database trigger can generate the ID
+            String sql = "INSERT INTO users (email, first_name, last_name, is_student, is_instructor, is_ta, enabled, created_at) " +
+                         "VALUES (:email, :firstName, :lastName, true, false, false, true, CURRENT_TIMESTAMP) " +
+                         "RETURNING id";
+            
+            String generatedId = (String) entityManager.createNativeQuery(sql)
+                    .setParameter("email", request.getEmail())
+                    .setParameter("firstName", request.getFirstName())
+                    .setParameter("lastName", request.getLastName())
+                    .getSingleResult();
+            
+            logger.debug("Student created with ID: {}", generatedId);
 
-        // Fetch the newly created student
-        User savedStudent = userRepository.findById(generatedId)
-                .orElseThrow(() -> new RuntimeException("Failed to fetch created student"));
+            // Fetch the newly created student
+            User savedStudent = userRepository.findById(generatedId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Student", generatedId));
 
-        return mapToStudentDTO(savedStudent, Collections.emptyList(), Collections.emptyList());
+            logger.info("Successfully created student: {} {} ({})", request.getFirstName(), request.getLastName(), generatedId);
+            return mapToStudentDTO(savedStudent, Collections.emptyList(), Collections.emptyList());
+        } catch (Exception e) {
+            logger.error("Failed to create student: {}", request.getEmail(), e);
+            throw new RuntimeException("Failed to create student", e);
+        }
     }
 
     @Transactional
     public void updateEnrollments(String studentId, UpdateEnrollmentRequest request) {
+        logger.info("Updating enrollments for student: {}", studentId);
+        
         // Verify student exists
         User student = userRepository.findById(studentId)
-                .orElseThrow(() -> new RuntimeException("Student not found"));
+                .orElseThrow(() -> new UserNotFoundException("Student not found with ID: " + studentId));
 
         Set<Long> newSectionIds = new HashSet<>(request.getSectionIds());
+        logger.debug("New section IDs for student {}: {}", studentId, newSectionIds);
         
         // Get all existing enrollments (both active and inactive)
         List<SectionEnrollment> existingEnrollments = enrollmentRepository

@@ -5,6 +5,9 @@ import com.smartattendance.dto.request.RegisterRequest;
 import com.smartattendance.dto.response.LoginResponse;
 import com.smartattendance.dto.response.UserDTO;
 import com.smartattendance.service.AuthService;
+import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @CrossOrigin(origins = "http://localhost:5173")
 public class AuthController {
 
+    private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
     private final AuthService authService;
 
     public AuthController(AuthService authService) {
@@ -21,25 +25,17 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest request) {
-        try {
-            LoginResponse response = authService.login(request);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(java.util.Map.of("error", e.getMessage()));
-        }
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+        logger.info("Login request received for: {}", request.getEmail());
+        LoginResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
-        try {
-            UserDTO user = authService.register(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(user);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(java.util.Map.of("error", e.getMessage()));
-        }
+    public ResponseEntity<UserDTO> register(@Valid @RequestBody RegisterRequest request) {
+        logger.info("Registration request received for: {}", request.getEmail());
+        UserDTO user = authService.register(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(user);
     }
 }
 
