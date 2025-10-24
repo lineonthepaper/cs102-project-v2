@@ -38,14 +38,17 @@ function Students() {
   })()
 
   useEffect(() => {
-    fetchStudents()
     fetchCourses()
     fetchSections()
   }, [])
 
   useEffect(() => {
+    fetchStudents()
+  }, [courseFilter, sectionFilter])
+
+  useEffect(() => {
     filterAndSortStudents()
-  }, [students, searchTerm, sortBy, sortOrder, courseFilter, sectionFilter])
+  }, [students, searchTerm, sortBy, sortOrder])
 
   useEffect(() => {
     setSectionFilter('all')
@@ -69,7 +72,16 @@ function Students() {
 
   const fetchStudents = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/students`)
+      // Use summary endpoint with query params for better performance
+      let url = `${API_BASE_URL}/api/students?summary=true`
+      if (courseFilter !== 'all') {
+        url += `&courseId=${courseFilter}`
+      }
+      if (sectionFilter !== 'all') {
+        url += `&sectionId=${sectionFilter}`
+      }
+      
+      const response = await fetch(url)
       if (!response.ok) {
         throw new Error('Failed to fetch students')
       }
@@ -166,78 +178,8 @@ function Students() {
       )
     }
 
-    filtered = filtered
-      .map((student) => {
-        const attendanceRecords = student.attendanceRecords || []
-        const enrollments = student.enrollments || []
-
-        const filteredAttendanceRecords = attendanceRecords.filter((record) => {
-          const recordCourseId = Number(record.attendance_sessions?.sections?.courses?.id)
-          const recordSectionId = Number(record.attendance_sessions?.sections?.id)
-
-          if (courseId !== null && recordCourseId !== courseId) {
-            return false
-          }
-
-          if (sectionId !== null && recordSectionId !== sectionId) {
-            return false
-          }
-
-          return true
-        })
-
-        const filteredEnrollments = enrollments.filter((enrollment) => {
-          const enrollmentCourseId = Number(enrollment.sections?.courses?.id)
-          const enrollmentSectionId = Number(enrollment.section_id)
-
-          if (courseId !== null && enrollmentCourseId !== courseId) {
-            return false
-          }
-
-          if (sectionId !== null && enrollmentSectionId !== sectionId) {
-            return false
-          }
-
-          return true
-        })
-
-        const hasFilterSelection = courseId !== null || sectionId !== null
-        const hasFilteredMatch =
-          filteredAttendanceRecords.length > 0 || filteredEnrollments.length > 0
-
-        if (hasFilterSelection && !hasFilteredMatch) {
-          return null
-        }
-
-        const totalSessions = filteredAttendanceRecords.length
-        const lateSessions = filteredAttendanceRecords.filter(
-          (record) => record.status === 'LATE'
-        ).length
-        const presentSessions = filteredAttendanceRecords.filter(
-          (record) => record.status === 'PRESENT' || record.status === 'LATE'
-        ).length
-        const absentSessions = Math.max(totalSessions - presentSessions, 0)
-
-        const attendanceRate =
-          totalSessions > 0 ? Math.round((presentSessions / totalSessions) * 100) : 0
-        const punctualityRate =
-          totalSessions > 0
-            ? Math.round(((totalSessions - lateSessions) / totalSessions) * 100)
-            : 0
-
-        return {
-          ...student,
-          filteredAttendanceRecords,
-          filteredEnrollments,
-          filteredTotalSessions: totalSessions,
-          filteredPresentSessions: presentSessions,
-          filteredLateSessions: lateSessions,
-          filteredAbsentSessions: absentSessions,
-          filteredAttendanceRate: attendanceRate,
-          filteredPunctualityRate: punctualityRate
-        }
-      })
-      .filter(Boolean)
+    // Backend now handles course/section filtering, so students already have correct stats
+    // Just use the stats directly from the backend response
 
     // Apply sorting
     if (sortBy !== 'default') {
@@ -636,10 +578,9 @@ function Students() {
           </thead>
           <tbody>
             {filteredStudents.map((student) => {
-              const attendanceRateValue =
-                student.filteredAttendanceRate ?? student.attendanceRate ?? 0
-              const punctualityRateValue =
-                student.filteredPunctualityRate ?? student.punctualityRate ?? 0
+              // Backend now provides pre-calculated stats filtered by course/section
+              const attendanceRateValue = student.attendanceRate ?? 0
+              const punctualityRateValue = student.punctualityRate ?? 0
               return (
                 <tr key={student.displayId || student.id}>
                   <td className="student-id">{student.displayId || student.id}</td>

@@ -28,9 +28,22 @@ public class StudentController {
     }
 
     @GetMapping
-    public ResponseEntity<List<StudentDTO>> getAllStudents() {
-        logger.info("Fetching all students");
-        List<StudentDTO> students = studentService.getAllStudents();
+    public ResponseEntity<List<StudentDTO>> getAllStudents(
+            @RequestParam(required = false) Long courseId,
+            @RequestParam(required = false) Long sectionId,
+            @RequestParam(required = false, defaultValue = "false") boolean summary) {
+        logger.info("Fetching students - summary: {}, courseId: {}, sectionId: {}", 
+                    summary, courseId, sectionId);
+        
+        List<StudentDTO> students;
+        if (summary) {
+            // Lightweight endpoint for list views
+            students = studentService.getStudentsSummary(courseId, sectionId);
+        } else {
+            // Full data with attendance records (for compatibility)
+            students = studentService.getAllStudents();
+        }
+        
         logger.info("Retrieved {} students", students.size());
         return ResponseEntity.ok(students);
     }

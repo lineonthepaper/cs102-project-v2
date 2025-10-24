@@ -1,6 +1,7 @@
 package com.smartattendance.controller;
 
 import com.smartattendance.dto.response.course.SectionDTO;
+import com.smartattendance.dto.response.user.StudentDTO;
 import com.smartattendance.service.SectionService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -65,6 +66,15 @@ public class SectionController {
         sectionService.deleteSection(id);
         logger.info("Section deleted successfully: {}", id);
         return ResponseEntity.ok(Map.of("message", "Section deleted successfully"));
+        // GlobalExceptionHandler handles exceptions ✓
+    }
+
+    @GetMapping("/{id}/students")
+    public ResponseEntity<List<StudentDTO>> getStudentsBySection(@PathVariable Long id) {
+        logger.info("Fetching students for section ID: {}", id);
+        List<StudentDTO> students = sectionService.getStudentsBySection(id);
+        logger.info("Retrieved {} students for section {}", students.size(), id);
+        return ResponseEntity.ok(students);
         // GlobalExceptionHandler handles exceptions ✓
     }
 }

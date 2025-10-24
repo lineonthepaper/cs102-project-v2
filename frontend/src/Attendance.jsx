@@ -182,6 +182,7 @@ function Attendance() {
     // Transform backend data to match frontend expectations
     const transformedData = data.map(section => ({
       ...section,
+      section_code: section.sectionCode, // Map camelCase to snake_case
       courses: section.course ? {
         code: section.course.code,
         title: section.course.title
@@ -320,8 +321,9 @@ function Attendance() {
     setSelectedSession(session)
     setMarkingSearchTerm('')
     setStatusFilterMarking('all')
-    await fetchStudentsAndRecords(session.id, session.section_id)
-    setShowMarkingModal(true)
+    setFilteredStudents([])  // Clear to show loading state
+    setShowMarkingModal(true)  // Show modal immediately
+    fetchStudentsAndRecords(session.id, session.section_id)  // Load data in background (no await)
   }
 
   const closeMarkingModal = () => {
@@ -336,21 +338,19 @@ function Attendance() {
 
   const fetchStudentsAndRecords = async (sessionId, sectionId) => {
     try {
-      // Fetch enrolled students via backend API
-      const studentsResponse = await fetch(`${API_BASE_URL}/api/students`)
+      // Fetch students enrolled in this section - using optimized endpoint
+      const studentsResponse = await fetch(`${API_BASE_URL}/api/sections/${sectionId}/students`)
       if (!studentsResponse.ok) throw new Error('Failed to fetch students')
       
-      const allStudents = await studentsResponse.json()
+      const students = await studentsResponse.json()
       
-      // Filter for students enrolled in this section
-      const studentList = allStudents
-        .filter(student => student.enrollments?.some(e => e.sectionId === sectionId && e.isActive))
-        .map(student => ({
-          id: student.id,
-          email: student.email,
-          first_name: student.firstName,
-          last_name: student.lastName
-        }))
+      // Map to frontend format
+      const studentList = students.map(student => ({
+        id: student.id,
+        email: student.email,
+        first_name: student.firstName,
+        last_name: student.lastName
+      }))
       setStudents(studentList)
       setFilteredStudents(studentList)
 
@@ -404,7 +404,19 @@ function Attendance() {
 
       const savedRecord = await response.json()
 
-      await fetchStudentsAndRecords(selectedSession.id, selectedSession.section_id)
+      // Just update the single record in state instead of refetching everything
+      setAttendanceRecords(prev => ({
+        ...prev,
+        [userId]: {
+          id: savedRecord.id,
+          user_id: savedRecord.userId,
+          session_id: savedRecord.sessionId,
+          status: savedRecord.status,
+          checkin_time: savedRecord.checkinTime,
+          checkout_time: savedRecord.checkoutTime,
+          notes: savedRecord.notes
+        }
+      }))
     } catch (error) {
       console.error('Error marking attendance:', error)
       alert('Failed to mark attendance: ' + error.message)
@@ -499,7 +511,7 @@ function Attendance() {
                     <option value="all">All Sections</option>
                     {sectionList.map(section => (
                       <option key={section.id} value={section.id}>
-                        {section.section_code} ({section.year} S{section.semester})
+                        {section.section_code}
                       </option>
                     ))}
                   </select>
@@ -702,10 +714,17 @@ function Attendance() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredStudents.map(student => {
-                    const record = attendanceRecords[student.id]
-                    return (
-                      <tr key={student.id}>
+                  {filteredStudents.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#9ca3af' }}>
+                        Loading students...
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredStudents.map(student => {
+                      const record = attendanceRecords[student.id]
+                      return (
+                        <tr key={student.id}>
                         <td>{student.id}</td>
                         <td>{student.first_name} {student.last_name}</td>
                         <td>
@@ -787,8 +806,9 @@ function Attendance() {
                           </div>
                         </td>
                       </tr>
-                    )
-                  })}
+                      )
+                    })
+                  )}
                 </tbody>
               </table>
               </div>

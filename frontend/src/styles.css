@@ -566,9 +566,14 @@ body {
   border-radius: 6px;
   font-size: 0.75rem;
   background: white;
+  background-color: white;
   color: black;
   transition: all 0.2s ease;
   outline: none;
+  appearance: auto;
+  -webkit-appearance: menulist;
+  -moz-appearance: menulist;
+  cursor: pointer;
 }
 
 .filter-select:focus {
@@ -577,9 +582,20 @@ body {
 }
 
 .filter-select option {
-  background: white;
-  color: black;
-  padding: 0.25rem;
+  background: white !important;
+  background-color: white !important;
+  color: black !important;
+  padding: 0.5rem !important;
+  font-size: 0.875rem !important;
+  min-height: 2rem !important;
+}
+
+.filter-select option:hover,
+.filter-select option:focus,
+.filter-select option:checked {
+  background: #f3f4f6 !important;
+  background-color: #f3f4f6 !important;
+  color: black !important;
 }
 
 .table-header {
