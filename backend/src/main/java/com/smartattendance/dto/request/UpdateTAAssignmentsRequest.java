@@ -1,23 +1,15 @@
 package com.smartattendance.dto.request;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.util.List;
 
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class UpdateTAAssignmentsRequest {
     private List<Long> sectionIds;
-
-    public UpdateTAAssignmentsRequest() {
-    }
-
-    public UpdateTAAssignmentsRequest(List<Long> sectionIds) {
-        this.sectionIds = sectionIds;
-    }
-
-    public List<Long> getSectionIds() {
-        return sectionIds;
-    }
-
-    public void setSectionIds(List<Long> sectionIds) {
-        this.sectionIds = sectionIds;
-    }
 }
 
