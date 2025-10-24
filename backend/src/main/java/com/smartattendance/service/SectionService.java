@@ -1,10 +1,11 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.response.SectionDTO;
+import com.smartattendance.dto.response.course.SectionDTO;
 import com.smartattendance.entity.Section;
+import com.smartattendance.entity.Semester;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.SectionRepository;
-import com.smartattendance.util.DateTimeUtils;
+import com.smartattendance.util.helper.DateTimeUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,7 +33,8 @@ public class SectionService {
         section.setCourseId(sectionDTO.getCourseId());
         section.setSectionCode(sectionDTO.getSectionCode());
         section.setYear(sectionDTO.getYear());
-        section.setSemester(sectionDTO.getSemester());
+        // Convert Integer to Semester enum
+        section.setSemester(sectionDTO.getSemester() != null ? Semester.fromValue(sectionDTO.getSemester()) : null);
         section.setMeetingDay(DateTimeUtils.dayNameToNumber(sectionDTO.getMeetingDay()));
         section.setStartTime(sectionDTO.getStartTime());
         section.setEndTime(sectionDTO.getEndTime());
@@ -44,12 +46,13 @@ public class SectionService {
     @Transactional
     public SectionDTO updateSection(Long id, SectionDTO sectionDTO) {
         Section section = sectionRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Section not found with ID: " + id));
+                .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("Section", id.toString()));
         
         section.setCourseId(sectionDTO.getCourseId());
         section.setSectionCode(sectionDTO.getSectionCode());
         section.setYear(sectionDTO.getYear());
-        section.setSemester(sectionDTO.getSemester());
+        // Convert Integer to Semester enum
+        section.setSemester(sectionDTO.getSemester() != null ? Semester.fromValue(sectionDTO.getSemester()) : null);
         section.setMeetingDay(DateTimeUtils.dayNameToNumber(sectionDTO.getMeetingDay()));
         section.setStartTime(sectionDTO.getStartTime());
         section.setEndTime(sectionDTO.getEndTime());

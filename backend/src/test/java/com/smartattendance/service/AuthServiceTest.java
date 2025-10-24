@@ -1,7 +1,7 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.request.LoginRequest;
-import com.smartattendance.dto.request.RegisterRequest;
+import com.smartattendance.dto.request.auth.LoginRequest;
+import com.smartattendance.dto.request.auth.RegisterRequest;
 import com.smartattendance.entity.User;
 import com.smartattendance.exception.DuplicateEmailException;
 import com.smartattendance.repository.UserRepository;

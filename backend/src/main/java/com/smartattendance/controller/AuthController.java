@@ -1,9 +1,9 @@
 package com.smartattendance.controller;
 
-import com.smartattendance.dto.request.LoginRequest;
-import com.smartattendance.dto.request.RegisterRequest;
-import com.smartattendance.dto.response.LoginResponse;
-import com.smartattendance.dto.response.UserDTO;
+import com.smartattendance.dto.request.auth.LoginRequest;
+import com.smartattendance.dto.request.auth.RegisterRequest;
+import com.smartattendance.dto.response.auth.LoginResponse;
+import com.smartattendance.dto.response.auth.UserDTO;
 import com.smartattendance.service.AuthService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;

@@ -1,8 +1,8 @@
 package com.smartattendance.controller;
 
-import com.smartattendance.dto.request.CreateStudentRequest;
-import com.smartattendance.dto.response.StudentDTO;
-import com.smartattendance.dto.request.UpdateEnrollmentRequest;
+import com.smartattendance.dto.request.user.CreateStudentRequest;
+import com.smartattendance.dto.response.user.StudentDTO;
+import com.smartattendance.dto.request.user.UpdateEnrollmentRequest;
 import com.smartattendance.service.StudentService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;

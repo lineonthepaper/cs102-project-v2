@@ -1,8 +1,8 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.request.AddTARequest;
-import com.smartattendance.dto.request.UpdateTAAssignmentsRequest;
-import com.smartattendance.dto.response.TADTO;
+import com.smartattendance.dto.request.user.AddTARequest;
+import com.smartattendance.dto.request.user.UpdateTAAssignmentsRequest;
+import com.smartattendance.dto.response.user.TADTO;
 import com.smartattendance.entity.TAAssignment;
 import com.smartattendance.entity.User;
 import com.smartattendance.repository.TAAssignmentRepository;

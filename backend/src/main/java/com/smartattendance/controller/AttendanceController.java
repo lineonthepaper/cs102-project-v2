@@ -1,9 +1,9 @@
 package com.smartattendance.controller;
 
-import com.smartattendance.dto.request.CreateAttendanceSessionRequest;
-import com.smartattendance.dto.request.MarkAttendanceRequest;
-import com.smartattendance.dto.response.AttendanceRecordResponseDTO;
-import com.smartattendance.dto.response.AttendanceSessionResponseDTO;
+import com.smartattendance.dto.request.attendance.CreateAttendanceSessionRequest;
+import com.smartattendance.dto.request.attendance.MarkAttendanceRequest;
+import com.smartattendance.dto.response.attendance.AttendanceRecordResponseDTO;
+import com.smartattendance.dto.response.attendance.AttendanceSessionResponseDTO;
 import com.smartattendance.service.AttendanceService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

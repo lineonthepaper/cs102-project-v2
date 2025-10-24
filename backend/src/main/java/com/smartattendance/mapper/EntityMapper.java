@@ -1,8 +1,11 @@
 package com.smartattendance.mapper;
 
-import com.smartattendance.dto.response.*;
+import com.smartattendance.dto.response.attendance.*;
+import com.smartattendance.dto.response.course.*;
+import com.smartattendance.dto.response.user.*;
+import com.smartattendance.dto.response.auth.*;
 import com.smartattendance.entity.*;
-import com.smartattendance.util.DateTimeUtils;
+import com.smartattendance.util.helper.DateTimeUtils;
 import org.mapstruct.*;
 
 import java.util.List;
@@ -20,8 +23,7 @@ import java.util.List;
 @Mapper(
     componentModel = "spring",
     unmappedTargetPolicy = ReportingPolicy.IGNORE,
-    injectionStrategy = InjectionStrategy.CONSTRUCTOR,
-    imports = DateTimeUtils.class
+    injectionStrategy = InjectionStrategy.CONSTRUCTOR
 )
 public interface EntityMapper {
 
@@ -33,7 +35,8 @@ public interface EntityMapper {
 
     // ==================== Section Mappings ====================
     
-    @Mapping(target = "meetingDay", expression = "java(com.smartattendance.util.DateTimeUtils.dayNumberToName(section.getMeetingDay()))")
+    @Mapping(target = "meetingDay", expression = "java(com.smartattendance.util.helper.DateTimeUtils.dayNumberToName(section.getMeetingDay()))")
+    @Mapping(target = "semester", expression = "java(section.getSemester() != null ? section.getSemester().getValue() : null)")
     @Mapping(target = "course", source = "course")
     SectionDTO toSectionDTO(Section section);
     

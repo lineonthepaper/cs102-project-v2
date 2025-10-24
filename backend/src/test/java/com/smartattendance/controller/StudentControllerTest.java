@@ -1,7 +1,7 @@
 package com.smartattendance.controller;
 
-import com.smartattendance.dto.request.CreateStudentRequest;
-import com.smartattendance.dto.response.StudentDTO;
+import com.smartattendance.dto.request.user.CreateStudentRequest;
+import com.smartattendance.dto.response.user.StudentDTO;
 import com.smartattendance.service.StudentService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

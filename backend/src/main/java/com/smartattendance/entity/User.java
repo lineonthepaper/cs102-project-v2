@@ -1,15 +1,16 @@
 package com.smartattendance.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
-@Data
+@Getter  // Only generate getters
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
@@ -51,6 +52,76 @@ public class User {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+    
+    // ===== VALIDATED SETTERS (ISP Fix) =====
+    
+    public void setId(String id) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("User ID cannot be null or empty");
+        }
+        this.id = id.trim();
+    }
+    
+    public void setEmail(String email) {
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("Email cannot be null or empty");
+        }
+        // Basic email validation
+        if (!email.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")) {
+            throw new IllegalArgumentException("Invalid email format: " + email);
+        }
+        this.email = email.toLowerCase().trim();
+    }
+    
+    public void setAuthId(String authId) {
+        this.authId = authId != null ? authId.trim() : null;
+    }
+    
+    public void setFirstName(String firstName) {
+        if (firstName == null || firstName.isBlank()) {
+            throw new IllegalArgumentException("First name cannot be null or empty");
+        }
+        if (firstName.length() < 2) {
+            throw new IllegalArgumentException("First name must be at least 2 characters");
+        }
+        this.firstName = firstName.trim();
+    }
+    
+    public void setLastName(String lastName) {
+        if (lastName == null || lastName.isBlank()) {
+            throw new IllegalArgumentException("Last name cannot be null or empty");
+        }
+        if (lastName.length() < 2) {
+            throw new IllegalArgumentException("Last name must be at least 2 characters");
+        }
+        this.lastName = lastName.trim();
+    }
+    
+    public void setIsStudent(Boolean isStudent) {
+        this.isStudent = isStudent != null ? isStudent : false;
+    }
+    
+    public void setIsInstructor(Boolean isInstructor) {
+        this.isInstructor = isInstructor != null ? isInstructor : false;
+    }
+    
+    public void setIsTA(Boolean isTA) {
+        this.isTA = isTA != null ? isTA : false;
+    }
+    
+    public void setEnabled(Boolean enabled) {
+        this.enabled = enabled != null ? enabled : true;
+    }
+    
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+    
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    // ===== BUSINESS LOGIC METHODS (Rich Domain Model) =====
 
     /**
      * Determines the user's primary role based on their role flags.
@@ -62,5 +133,149 @@ public class User {
         if (isInstructor) return UserRole.INSTRUCTOR;
         if (isTA) return UserRole.TA;
         return UserRole.STUDENT;
+    }
+    
+    /**
+     * Get the user's full name.
+     * @return first name + last name
+     */
+    public String getFullName() {
+        return firstName + " " + lastName;
+    }
+    
+    /**
+     * Get the user's formatted display name (Last, First).
+     * @return last name, first name
+     */
+    public String getDisplayName() {
+        return lastName + ", " + firstName;
+    }
+    
+    /**
+     * Check if this user has student privileges.
+     */
+    public boolean canAccessStudentFeatures() {
+        return isStudent || isTA || isInstructor;
+    }
+    
+    /**
+     * Check if this user has teaching privileges (TA or Instructor).
+     */
+    public boolean canTeach() {
+        return isTA || isInstructor;
+    }
+    
+    /**
+     * Check if this user has administrative privileges.
+     */
+    public boolean hasAdminPrivileges() {
+        return isInstructor;
+    }
+    
+    /**
+     * Make this user a student.
+     */
+    public void makeStudent() {
+        this.isStudent = true;
+    }
+    
+    /**
+     * Make this user an instructor.
+     */
+    public void makeInstructor() {
+        this.isInstructor = true;
+        this.isStudent = false; // Instructors aren't students
+    }
+    
+    /**
+     * Make this user a TA.
+     */
+    public void makeTA() {
+        this.isTA = true;
+    }
+    
+    /**
+     * Enable this user account.
+     */
+    public void enable() {
+        this.enabled = true;
+    }
+    
+    /**
+     * Disable this user account.
+     */
+    public void disable() {
+        this.enabled = false;
+    }
+    
+    /**
+     * Check if the user account is active.
+     */
+    public boolean isActive() {
+        return enabled != null && enabled;
+    }
+    
+    /**
+     * Get a normalized display ID for students (e.g., S0000001).
+     * @return formatted student ID
+     */
+    public String getNormalizedStudentId() {
+        if (id == null) return "";
+        
+        // Check if already normalized (e.g., S0000001)
+        if (id.matches("^[A-Z]\\d{7}$")) {
+            return id;
+        }
+        
+        // If it's just digits, add prefix
+        if (id.matches("^\\d+$") && isStudent) {
+            return "S" + String.format("%07d", Integer.parseInt(id));
+        }
+        
+        return id;
+    }
+    
+    /**
+     * Calculate attendance statistics for this student.
+     * @param attendanceRecords the student's attendance records
+     * @return an AttendanceStatistics object
+     */
+    public AttendanceStatistics calculateAttendanceStats(List<AttendanceRecord> attendanceRecords) {
+        if (attendanceRecords == null || attendanceRecords.isEmpty()) {
+            return new AttendanceStatistics(0, 0, 0, 0, 0);
+        }
+        
+        int totalSessions = attendanceRecords.size();
+        int lateSessions = (int) attendanceRecords.stream()
+                .filter(AttendanceRecord::isLate)
+                .count();
+        int presentSessions = (int) attendanceRecords.stream()
+                .filter(AttendanceRecord::isPresent)
+                .count();
+        
+        int attendanceRate = Math.round((float) presentSessions / totalSessions * 100);
+        int punctualityRate = Math.round((float) (totalSessions - lateSessions) / totalSessions * 100);
+        
+        return new AttendanceStatistics(totalSessions, presentSessions, lateSessions, attendanceRate, punctualityRate);
+    }
+    
+    /**
+     * Inner class to hold attendance statistics.
+     */
+    public static class AttendanceStatistics {
+        public final int totalSessions;
+        public final int presentSessions;
+        public final int lateSessions;
+        public final int attendanceRate;
+        public final int punctualityRate;
+        
+        public AttendanceStatistics(int totalSessions, int presentSessions, int lateSessions, 
+                                   int attendanceRate, int punctualityRate) {
+            this.totalSessions = totalSessions;
+            this.presentSessions = presentSessions;
+            this.lateSessions = lateSessions;
+            this.attendanceRate = attendanceRate;
+            this.punctualityRate = punctualityRate;
+        }
     }
 }

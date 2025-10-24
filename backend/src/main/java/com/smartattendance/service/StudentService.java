@@ -1,14 +1,17 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.request.CreateStudentRequest;
-import com.smartattendance.dto.request.UpdateEnrollmentRequest;
-import com.smartattendance.dto.response.*;
+import com.smartattendance.dto.request.user.CreateStudentRequest;
+import com.smartattendance.dto.request.user.UpdateEnrollmentRequest;
+import com.smartattendance.dto.response.attendance.*;
+import com.smartattendance.dto.response.course.*;
+import com.smartattendance.dto.response.user.*;
+import com.smartattendance.dto.response.auth.*;
 import com.smartattendance.entity.*;
 import com.smartattendance.exception.DuplicateEmailException;
 import com.smartattendance.exception.ResourceNotFoundException;
-import com.smartattendance.exception.UserNotFoundException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
+import com.smartattendance.util.helper.ServiceUtils;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
@@ -61,26 +64,21 @@ public class StudentService {
         
         logger.debug("Found {} students in database", students.size());
 
-        // Collect all student IDs
-        List<String> studentIds = students.stream()
-                .<String>map(u -> u.getId())
-                .collect(Collectors.toList());
+        // FIXED: Using ServiceUtils to eliminate code duplication (DRY principle)
+        // Fetch attendance records for all students
+        List<String> studentIds = ServiceUtils.extractIds(students, User::getId);
+        
+        Map<String, List<AttendanceRecord>> attendanceByStudent = ServiceUtils.fetchAndGroupRelated(
+            students,
+            User::getId,
+            ids -> !ids.isEmpty() ? attendanceRecordRepository.findByUserIdIn(ids) : Collections.emptyList(),
+            AttendanceRecord::getUserId
+        );
 
-        // Fetch attendance records for all students in one query
-        final Map<String, List<AttendanceRecord>> attendanceByStudent;
-        if (!studentIds.isEmpty()) {
-            List<AttendanceRecord> allRecords = attendanceRecordRepository.findByUserIdIn(studentIds);
-            attendanceByStudent = allRecords.stream()
-                    .collect(Collectors.groupingBy(r -> r.getUserId()));
-        } else {
-            attendanceByStudent = new HashMap<>();
-        }
-
-        // Fetch enrollments for all students
-        final Map<String, List<SectionEnrollment>> enrollmentsByStudent = new HashMap<>();
+        // Fetch enrollments for all students (including inactive ones for history)
+        Map<String, List<SectionEnrollment>> enrollmentsByStudent = new HashMap<>();
         for (String studentId : studentIds) {
-            List<SectionEnrollment> enrollments = enrollmentRepository
-                    .findByUserIdAndIsActive(studentId, true);
+            List<SectionEnrollment> enrollments = enrollmentRepository.findByUserIdAndIsActive(studentId, true);
             enrollmentsByStudent.put(studentId, enrollments);
         }
 
@@ -136,7 +134,7 @@ public class StudentService {
         
         // Verify student exists
         User student = userRepository.findById(studentId)
-                .orElseThrow(() -> new UserNotFoundException("Student not found with ID: " + studentId));
+                .orElseThrow(() -> new ResourceNotFoundException("Student", studentId));
 
         Set<Long> newSectionIds = new HashSet<>(request.getSectionIds());
         logger.debug("New section IDs for student {}: {}", studentId, newSectionIds);
@@ -179,56 +177,32 @@ public class StudentService {
         }
     }
 
+    /**
+     * Map a User entity to StudentDTO.
+     * Now using Rich Domain Model - the entity does the work!
+     */
     private StudentDTO mapToStudentDTO(User student, List<AttendanceRecord> attendanceRecords, List<SectionEnrollment> enrollments) {
         StudentDTO dto = new StudentDTO();
         dto.setId(student.getId());
-        dto.setDisplayId(normalizeStudentId(student.getId(), student.getIsStudent()));
+        dto.setDisplayId(student.getNormalizedStudentId()); // Tell, don't ask!
         dto.setEmail(student.getEmail());
         dto.setFirstName(student.getFirstName());
         dto.setLastName(student.getLastName());
         dto.setEnabled(student.getEnabled());
 
-        // Calculate attendance statistics
-        int totalSessions = attendanceRecords.size();
-        int lateSessions = (int) attendanceRecords.stream()
-                .filter(r -> "LATE".equals(r.getStatus()))
-                .count();
-        int presentSessions = (int) attendanceRecords.stream()
-                .filter(r -> "PRESENT".equals(r.getStatus()) || "LATE".equals(r.getStatus()))
-                .count();
-        
-        int attendanceRate = totalSessions > 0 ? Math.round((float) presentSessions / totalSessions * 100) : 0;
-        int punctualityRate = totalSessions > 0 ? Math.round((float) (totalSessions - lateSessions) / totalSessions * 100) : 0;
+        // Let the entity calculate its own statistics (Rich Domain Model)
+        User.AttendanceStatistics stats = student.calculateAttendanceStats(attendanceRecords);
+        dto.setTotalSessions(stats.totalSessions);
+        dto.setPresentSessions(stats.presentSessions);
+        dto.setLateSessions(stats.lateSessions);
+        dto.setAttendanceRate(stats.attendanceRate);
+        dto.setPunctualityRate(stats.punctualityRate);
 
-        dto.setTotalSessions(totalSessions);
-        dto.setPresentSessions(presentSessions);
-        dto.setLateSessions(lateSessions);
-        dto.setAttendanceRate(attendanceRate);
-        dto.setPunctualityRate(punctualityRate);
-
-        // Map attendance records using EntityMapper
+        // Map relationships using EntityMapper
         dto.setAttendanceRecords(mapper.toAttendanceRecordDTOs(attendanceRecords));
-
-        // Map enrollments using EntityMapper
         dto.setEnrollments(mapper.toEnrollmentDTOs(enrollments));
 
         return dto;
-    }
-
-    private String normalizeStudentId(String id, Boolean isStudent) {
-        if (id == null) return "";
-        
-        // Check if already normalized (e.g., S0000001)
-        if (id.matches("^[A-Z]\\d{7}$")) {
-            return id;
-        }
-        
-        // If it's just digits, add prefix
-        if (id.matches("^\\d+$") && isStudent) {
-            return "S" + String.format("%07d", Integer.parseInt(id));
-        }
-        
-        return id;
     }
 }
 

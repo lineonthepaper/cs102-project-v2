@@ -1,12 +1,16 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.request.AddInstructorRequest;
-import com.smartattendance.dto.request.UpdateInstructorAssignmentsRequest;
-import com.smartattendance.dto.response.*;
+import com.smartattendance.dto.request.user.AddInstructorRequest;
+import com.smartattendance.dto.request.user.UpdateInstructorAssignmentsRequest;
+import com.smartattendance.dto.response.attendance.*;
+import com.smartattendance.dto.response.course.*;
+import com.smartattendance.dto.response.user.*;
+import com.smartattendance.dto.response.auth.*;
 import com.smartattendance.entity.*;
+import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
-import com.smartattendance.util.DateTimeUtils;
+import com.smartattendance.util.helper.ServiceUtils;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Service;
@@ -15,6 +19,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Service for managing instructors.
+ * 
+ * FIXED: Using ServiceUtils to eliminate code duplication (DRY principle)
+ * FIXED: Using ResourceNotFoundException instead of generic RuntimeException
+ */
 @Service
 public class InstructorService {
 
@@ -40,23 +50,19 @@ public class InstructorService {
     public List<InstructorDTO> getAllInstructors() {
         List<User> instructors = userRepository.findByIsInstructorTrue();
         
-        // Fetch all instructor IDs
-        List<String> instructorIds = instructors.stream().<String>map(u -> u.getId()).collect(Collectors.toList());
-        
-        // Fetch all section assignments for these instructors
-        final Map<String, List<SectionAssignment>> assignmentsByInstructor;
-        if (!instructorIds.isEmpty()) {
-            List<SectionAssignment> allAssignments = instructorIds.stream()
-                    .flatMap(instructorId -> sectionAssignmentRepository.findByUserIdAndRoleAndIsActive(instructorId, "INSTRUCTOR", true).stream())
-                    .collect(Collectors.toList());
-            assignmentsByInstructor = allAssignments.stream()
-                    .collect(Collectors.groupingBy(a -> a.getUserId()));
-        } else {
-            assignmentsByInstructor = new HashMap<>();
-        }
+        // FIXED: Using ServiceUtils to eliminate ~20 lines of duplicate code
+        Map<String, List<SectionAssignment>> assignmentsByInstructor = ServiceUtils.fetchAndGroupRelated(
+            instructors,
+            User::getId,  // Extract instructor IDs
+            ids -> ids.stream()  // Fetch assignments for these IDs
+                .flatMap(id -> sectionAssignmentRepository.findByUserIdAndRoleAndIsActive(id, "INSTRUCTOR", true).stream())
+                .collect(Collectors.toList()),
+            SectionAssignment::getUserId  // Group by user ID
+        );
         
         return instructors.stream()
-                .<InstructorDTO>map(instructor -> mapToInstructorDTO(instructor, assignmentsByInstructor.getOrDefault(instructor.getId(), Collections.emptyList())))
+                .map(instructor -> mapToInstructorDTO(instructor, 
+                    assignmentsByInstructor.getOrDefault(instructor.getId(), Collections.emptyList())))
                 .collect(Collectors.toList());
     }
 
@@ -88,7 +94,7 @@ public class InstructorService {
 
             // Fetch the newly created instructor
             User savedInstructor = userRepository.findById(generatedId)
-                    .orElseThrow(() -> new RuntimeException("Failed to fetch created instructor"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Instructor", generatedId));
 
             return mapToInstructorDTO(savedInstructor, Collections.emptyList());
         }
@@ -97,7 +103,7 @@ public class InstructorService {
     @Transactional
     public void removeInstructor(String userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Instructor not found with ID: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("Instructor", userId));
 
         // Delete all section assignments
         sectionAssignmentRepository.deleteByUserIdAndRole(userId, "INSTRUCTOR");
@@ -110,7 +116,7 @@ public class InstructorService {
     public void updateInstructorAssignments(String userId, UpdateInstructorAssignmentsRequest request) {
         // Verify instructor exists
         User instructor = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Instructor not found with ID: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("Instructor", userId));
 
         // Delete existing instructor assignments
         sectionAssignmentRepository.deleteByUserIdAndRole(userId, "INSTRUCTOR");
@@ -124,37 +130,18 @@ public class InstructorService {
         }
     }
 
+    /**
+     * Map User and assignments to InstructorDTO.
+     * 
+     * REFACTORED: Now uses EntityMapper (DRY principle).
+     * Before: Manual DTO construction with nested Course/Section mapping (30+ lines)
+     * After: Delegates to EntityMapper for assignment DTOs (2 lines)
+     * 
+     * This eliminates duplicate mapping logic and ensures consistency.
+     */
     private InstructorDTO mapToInstructorDTO(User user, List<SectionAssignment> assignments) {
-        List<SectionAssignmentDTO> assignmentDTOs = assignments.stream()
-                .<SectionAssignmentDTO>map(assignment -> {
-                    SectionDTO sectionDTO = null;
-                    if (assignment.getSection() != null) {
-                        CourseDTO courseDTO = null;
-                        if (assignment.getSection().getCourse() != null) {
-                            courseDTO = new CourseDTO(
-                                    assignment.getSection().getCourse().getId(),
-                                    assignment.getSection().getCourse().getCode(),
-                                    assignment.getSection().getCourse().getTitle(),
-                                    assignment.getSection().getCourse().getDescription()
-                            );
-                        }
-                        sectionDTO =                         new SectionDTO(
-                                assignment.getSection().getId(),
-                                assignment.getSection().getSectionCode(),
-                                assignment.getSection().getCourseId(),
-                                assignment.getSection().getYear(),
-                                assignment.getSection().getSemester(),
-                                DateTimeUtils.dayNumberToName(assignment.getSection().getMeetingDay()),
-                                assignment.getSection().getStartTime(),
-                                assignment.getSection().getEndTime(),
-                                assignment.getSection().getLocation(),
-                                courseDTO
-                        );
-                    }
-                    return new SectionAssignmentDTO(assignment.getId(), assignment.getUserId(), assignment.getSectionId(), 
-                                                    assignment.getRole(), assignment.getIsActive(), sectionDTO);
-                })
-                .collect(Collectors.toList());
+        // Use EntityMapper to convert assignments (handles Section and Course DTOs)
+        List<SectionAssignmentDTO> assignmentDTOs = mapper.toSectionAssignmentDTOs(assignments);
 
         return new InstructorDTO(
                 user.getId(),

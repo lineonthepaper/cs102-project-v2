@@ -1,13 +1,15 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.request.CreateAttendanceSessionRequest;
-import com.smartattendance.dto.request.MarkAttendanceRequest;
-import com.smartattendance.dto.response.AttendanceRecordResponseDTO;
-import com.smartattendance.dto.response.AttendanceSessionResponseDTO;
+import com.smartattendance.dto.request.attendance.CreateAttendanceSessionRequest;
+import com.smartattendance.dto.request.attendance.MarkAttendanceRequest;
+import com.smartattendance.dto.response.attendance.AttendanceRecordResponseDTO;
+import com.smartattendance.dto.response.attendance.AttendanceSessionResponseDTO;
 import com.smartattendance.entity.*;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
-import com.smartattendance.util.DateTimeUtils;
+import com.smartattendance.service.strategy.AttendanceStrategyFactory;
+import com.smartattendance.service.strategy.AttendanceMarkingStrategy;
+import com.smartattendance.util.helper.DateTimeUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,18 +28,21 @@ public class AttendanceService {
     private final SectionRepository sectionRepository;
     private final SectionEnrollmentRepository enrollmentRepository;
     private final EntityMapper mapper;
+    private final AttendanceStrategyFactory strategyFactory;
 
     public AttendanceService(
             AttendanceSessionRepository sessionRepository,
             AttendanceRecordRepository recordRepository,
             SectionRepository sectionRepository,
             SectionEnrollmentRepository enrollmentRepository,
-            EntityMapper mapper) {
+            EntityMapper mapper,
+            AttendanceStrategyFactory strategyFactory) {
         this.sessionRepository = sessionRepository;
         this.recordRepository = recordRepository;
         this.sectionRepository = sectionRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.mapper = mapper;
+        this.strategyFactory = strategyFactory;
     }
 
     @Transactional(readOnly = true)
@@ -47,6 +52,10 @@ public class AttendanceService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Create a new attendance session.
+     * Service is now a thin orchestrator - entity has the behavior.
+     */
     @Transactional
     public AttendanceSessionResponseDTO createSession(CreateAttendanceSessionRequest request) {
         AttendanceSession session = new AttendanceSession();
@@ -64,7 +73,7 @@ public class AttendanceService {
     @Transactional
     public AttendanceSessionResponseDTO updateSession(Long id, CreateAttendanceSessionRequest request) {
         AttendanceSession session = sessionRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Session not found"));
+                .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
 
         session.setSectionId(request.getSectionId());
         session.setSessionDate(LocalDate.parse(request.getSessionDate()));
@@ -85,6 +94,15 @@ public class AttendanceService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Mark attendance for a student.
+     * Now using Strategy Pattern - eliminates switch statements and follows Open/Closed Principle!
+     * 
+     * Benefits of Strategy Pattern:
+     * - Adding new attendance statuses doesn't require modifying this method
+     * - Each status has its own encapsulated behavior
+     * - Follows Open/Closed Principle: open for extension, closed for modification
+     */
     @Transactional
     public AttendanceRecordResponseDTO markAttendance(MarkAttendanceRequest request) {
         // Check if record already exists
@@ -94,12 +112,30 @@ public class AttendanceService {
 
         record.setSessionId(request.getSessionId());
         record.setUserId(request.getUserId());
-        record.setStatus(request.getStatus());
         record.setNotes(request.getNotes());
 
-        if (request.getCheckinTime() != null && !request.getCheckinTime().isEmpty()) {
-            record.setCheckinTime(LocalDateTime.parse(request.getCheckinTime(), 
-                DateTimeFormatter.ISO_DATE_TIME));
+        // Parse checkin time
+        LocalDateTime checkinTime = request.getCheckinTime() != null && !request.getCheckinTime().isEmpty()
+                ? LocalDateTime.parse(request.getCheckinTime(), DateTimeFormatter.ISO_DATE_TIME)
+                : LocalDateTime.now();
+
+        // Use Strategy Pattern - get the appropriate strategy and execute it
+        try {
+            AttendanceMarkingStrategy strategy = strategyFactory.getStrategy(request.getStatus());
+            strategy.mark(record, checkinTime);
+        } catch (IllegalArgumentException e) {
+            // Fallback for unknown statuses (backwards compatibility)
+            // Convert String to AttendanceStatus
+            try {
+                AttendanceStatus status = AttendanceStatus.fromCode(request.getStatus());
+                record.setStatus(status);
+            } catch (IllegalArgumentException ex) {
+                // If still invalid, set to null or default
+                record.setStatus(null);
+            }
+            if (request.getCheckinTime() != null && !request.getCheckinTime().isEmpty()) {
+                record.setCheckinTime(checkinTime);
+            }
         }
 
         AttendanceRecord savedRecord = recordRepository.save(record);
@@ -122,7 +158,8 @@ public class AttendanceService {
                 new AttendanceSessionResponseDTO.SectionInfoDTO();
             sectionInfo.setSectionCode(section.getSectionCode());
             sectionInfo.setYear(section.getYear());
-            sectionInfo.setSemester(section.getSemester());
+            // Convert Semester enum to Integer for DTO
+            sectionInfo.setSemester(section.getSemester() != null ? section.getSemester().getValue() : null);
             sectionInfo.setDayOfWeek(DateTimeUtils.dayNumberToName(section.getMeetingDay()));
             sectionInfo.setStartTime(section.getStartTime() != null ? section.getStartTime().toString() : null);
             sectionInfo.setEndTime(section.getEndTime() != null ? section.getEndTime().toString() : null);
@@ -147,7 +184,8 @@ public class AttendanceService {
         dto.setId(record.getId());
         dto.setUserId(record.getUserId());
         dto.setSessionId(record.getSessionId());
-        dto.setStatus(record.getStatus());
+        // Convert AttendanceStatus enum to String for DTO
+        dto.setStatus(record.getStatus() != null ? record.getStatus().getCode() : null);
         dto.setCheckinTime(record.getCheckinTime() != null ? 
             record.getCheckinTime().toString() : null);
         dto.setCheckoutTime(record.getCheckoutTime() != null ? 

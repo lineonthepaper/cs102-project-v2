@@ -1,10 +1,10 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.request.CreateStudentRequest;
-import com.smartattendance.dto.response.StudentDTO;
+import com.smartattendance.dto.request.user.CreateStudentRequest;
+import com.smartattendance.dto.response.user.StudentDTO;
 import com.smartattendance.entity.User;
 import com.smartattendance.exception.DuplicateEmailException;
-import com.smartattendance.exception.UserNotFoundException;
+import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.repository.*;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -119,7 +119,7 @@ class StudentServiceTest {
         when(userRepository.findById(anyString())).thenReturn(Optional.empty());
 
         // Act & Assert
-        assertThrows(UserNotFoundException.class, () -> {
+        assertThrows(ResourceNotFoundException.class, () -> {
             studentService.updateEnrollments("INVALID_ID", null);
         });
         verify(userRepository, times(1)).findById("INVALID_ID");

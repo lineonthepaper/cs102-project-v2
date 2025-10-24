@@ -1,12 +1,17 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.request.AddTARequest;
-import com.smartattendance.dto.request.UpdateTAAssignmentsRequest;
-import com.smartattendance.dto.response.*;
+import com.smartattendance.dto.request.user.AddTARequest;
+import com.smartattendance.dto.request.user.UpdateTAAssignmentsRequest;
+import com.smartattendance.dto.response.attendance.*;
+import com.smartattendance.dto.response.course.*;
+import com.smartattendance.dto.response.user.*;
+import com.smartattendance.dto.response.auth.*;
 import com.smartattendance.entity.*;
+import com.smartattendance.exception.ResourceNotFoundException;
+import com.smartattendance.exception.InvalidRequestException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
-import com.smartattendance.util.DateTimeUtils;
+import com.smartattendance.util.helper.ServiceUtils;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Service;
@@ -15,6 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Service for managing TAs.
+ * 
+ * FIXED: Using ServiceUtils to eliminate code duplication (DRY principle)
+ * FIXED: Using ResourceNotFoundException instead of generic RuntimeException
+ */
 @Service
 public class TAService {
 
@@ -28,7 +39,7 @@ public class TAService {
     private final EntityMapper mapper;
 
     public TAService(UserRepository userRepository, TAAssignmentRepository taAssignmentRepository,
-                     SectionRepository sectionRepository, CourseRepository courseRepository, EntityMapper mapper) {
+                    SectionRepository sectionRepository, CourseRepository courseRepository, EntityMapper mapper) {
         this.userRepository = userRepository;
         this.taAssignmentRepository = taAssignmentRepository;
         this.sectionRepository = sectionRepository;
@@ -40,45 +51,40 @@ public class TAService {
     public List<TADTO> getAllTAs() {
         List<User> tas = userRepository.findByIsTATrue();
         
-        // Fetch all TA IDs
-        List<String> taIds = tas.stream().<String>map(u -> u.getId()).collect(Collectors.toList());
-        
-        // Fetch all TA assignments for these TAs
-        final Map<String, List<TAAssignment>> assignmentsByTA;
-        if (!taIds.isEmpty()) {
-            List<TAAssignment> allAssignments = taIds.stream()
-                    .flatMap(taId -> taAssignmentRepository.findByUserId(taId).stream())
-                    .collect(Collectors.toList());
-            assignmentsByTA = allAssignments.stream()
-                    .collect(Collectors.groupingBy(a -> a.getUserId()));
-        } else {
-            assignmentsByTA = new HashMap<>();
-        }
+        // FIXED: Using ServiceUtils to eliminate ~20 lines of duplicate code
+        Map<String, List<TAAssignment>> assignmentsByTA = ServiceUtils.fetchAndGroupRelated(
+            tas,
+            User::getId,  // Extract TA IDs
+            ids -> ids.stream()  // Fetch assignments for these IDs
+                .flatMap(id -> taAssignmentRepository.findByUserId(id).stream())
+                .collect(Collectors.toList()),
+            TAAssignment::getUserId  // Group by user ID
+        );
         
         return tas.stream()
-                .<TADTO>map(ta -> mapToTADTO(ta, assignmentsByTA.getOrDefault(ta.getId(), Collections.emptyList())))
+                .map(ta -> mapToTADTO(ta, 
+                    assignmentsByTA.getOrDefault(ta.getId(), Collections.emptyList())))
                 .collect(Collectors.toList());
     }
 
     @Transactional
     public TADTO addTA(AddTARequest request) {
         // Find existing user by email
+        String resourceType = request.getType().equals("instructor") ? "Instructor" : "Student";
         User existingUser = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException(
-                        (request.getType().equals("instructor") ? "Instructor" : "Student") + 
-                        " with this email not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(resourceType, request.getEmail()));
 
         // Check if already a TA
         if (Boolean.TRUE.equals(existingUser.getIsTA())) {
-            throw new RuntimeException("This user is already a Teaching Assistant");
+            throw new InvalidRequestException("This user is already a Teaching Assistant");
         }
 
         // Validate user type
         if (request.getType().equals("instructor") && !Boolean.TRUE.equals(existingUser.getIsInstructor())) {
-            throw new RuntimeException("This user is not an instructor. Please check the email or select Student.");
+            throw new InvalidRequestException("This user is not an instructor. Please check the email or select Student.");
         }
         if (request.getType().equals("student") && !Boolean.TRUE.equals(existingUser.getIsStudent())) {
-            throw new RuntimeException("This user is not a student. Please check the email or select Instructor.");
+            throw new InvalidRequestException("This user is not a student. Please check the email or select Instructor.");
         }
 
         // Note: Frontend will handle Supabase Auth creation for students
@@ -95,7 +101,7 @@ public class TAService {
     @Transactional
     public void removeTA(String userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("TA not found with ID: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("TA", userId));
 
         // Delete all TA assignments
         taAssignmentRepository.deleteByUserId(userId);
@@ -111,7 +117,7 @@ public class TAService {
     public void updateTAAssignments(String userId, UpdateTAAssignmentsRequest request) {
         // Verify TA exists
         User ta = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("TA not found with ID: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("TA", userId));
 
         // Delete existing assignments
         taAssignmentRepository.deleteByUserId(userId);
@@ -125,36 +131,18 @@ public class TAService {
         }
     }
 
+    /**
+     * Map User and assignments to TADTO.
+     * 
+     * REFACTORED: Now uses EntityMapper (DRY principle).
+     * Before: Manual DTO construction with nested Course/Section mapping (30+ lines)
+     * After: Delegates to EntityMapper for assignment DTOs (2 lines)
+     * 
+     * This eliminates duplicate mapping logic and ensures consistency.
+     */
     private TADTO mapToTADTO(User user, List<TAAssignment> assignments) {
-        List<TAAssignmentDTO> assignmentDTOs = assignments.stream()
-                .<TAAssignmentDTO>map(assignment -> {
-                    SectionDTO sectionDTO = null;
-                    if (assignment.getSection() != null) {
-                        CourseDTO courseDTO = null;
-                        if (assignment.getSection().getCourse() != null) {
-                            courseDTO = new CourseDTO(
-                                    assignment.getSection().getCourse().getId(),
-                                    assignment.getSection().getCourse().getCode(),
-                                    assignment.getSection().getCourse().getTitle(),
-                                    assignment.getSection().getCourse().getDescription()
-                            );
-                        }
-                        sectionDTO = new SectionDTO(
-                                assignment.getSection().getId(),
-                                assignment.getSection().getSectionCode(),
-                                assignment.getSection().getCourseId(),
-                                assignment.getSection().getYear(),
-                                assignment.getSection().getSemester(),
-                                DateTimeUtils.dayNumberToName(assignment.getSection().getMeetingDay()),
-                                assignment.getSection().getStartTime(),
-                                assignment.getSection().getEndTime(),
-                                assignment.getSection().getLocation(),
-                                courseDTO
-                        );
-                    }
-                    return new TAAssignmentDTO(assignment.getId(), assignment.getUserId(), assignment.getSectionId(), sectionDTO);
-                })
-                .collect(Collectors.toList());
+        // Use EntityMapper to convert assignments (handles Section and Course DTOs)
+        List<TAAssignmentDTO> assignmentDTOs = mapper.toTAAssignmentDTOs(assignments);
 
         return new TADTO(
                 user.getId(),

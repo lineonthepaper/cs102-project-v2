@@ -1,6 +1,6 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.response.CourseDTO;
+import com.smartattendance.dto.response.course.CourseDTO;
 import com.smartattendance.entity.Course;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.CourseRepository;
@@ -38,7 +38,7 @@ public class CourseService {
     @Transactional
     public CourseDTO updateCourse(Long id, CourseDTO courseDTO) {
         Course course = courseRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Course not found with ID: " + id));
+                .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("Course", id.toString()));
         
         course.setCode(courseDTO.getCode());
         course.setTitle(courseDTO.getTitle());

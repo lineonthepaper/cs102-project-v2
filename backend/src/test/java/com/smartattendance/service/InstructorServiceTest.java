@@ -1,8 +1,8 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.request.AddInstructorRequest;
-import com.smartattendance.dto.request.UpdateInstructorAssignmentsRequest;
-import com.smartattendance.dto.response.InstructorDTO;
+import com.smartattendance.dto.request.user.AddInstructorRequest;
+import com.smartattendance.dto.request.user.UpdateInstructorAssignmentsRequest;
+import com.smartattendance.dto.response.user.InstructorDTO;
 import com.smartattendance.entity.SectionAssignment;
 import com.smartattendance.entity.User;
 import com.smartattendance.repository.SectionAssignmentRepository;

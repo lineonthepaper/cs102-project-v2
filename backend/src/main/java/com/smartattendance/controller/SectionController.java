@@ -1,7 +1,10 @@
 package com.smartattendance.controller;
 
-import com.smartattendance.dto.response.SectionDTO;
+import com.smartattendance.dto.response.course.SectionDTO;
 import com.smartattendance.service.SectionService;
+import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -9,11 +12,21 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * REST controller for Section management.
+ * 
+ * FIXED: Removed try-catch blocks (SRP violation)
+ * - Controllers should only handle HTTP concerns
+ * - Error handling delegated to GlobalExceptionHandler
+ * - Added proper logging with SLF4J
+ * - Added @Valid annotations for input validation
+ */
 @RestController
 @RequestMapping("/api/sections")
 @CrossOrigin(origins = "http://localhost:5173")
 public class SectionController {
 
+    private static final Logger logger = LoggerFactory.getLogger(SectionController.class);
     private final SectionService sectionService;
 
     public SectionController(SectionService sectionService) {
@@ -22,45 +35,37 @@ public class SectionController {
 
     @GetMapping
     public ResponseEntity<List<SectionDTO>> getAllSections() {
+        logger.info("Fetching all sections");
         List<SectionDTO> sections = sectionService.getAllSections();
+        logger.info("Retrieved {} sections", sections.size());
         return ResponseEntity.ok(sections);
     }
 
     @PostMapping
-    public ResponseEntity<SectionDTO> createSection(@RequestBody SectionDTO sectionDTO) {
-        try {
-            SectionDTO createdSection = sectionService.createSection(sectionDTO);
-            return ResponseEntity.status(HttpStatus.CREATED).body(createdSection);
-        } catch (RuntimeException e) {
-            System.err.println("Error creating section: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(null);
-        }
+    public ResponseEntity<SectionDTO> createSection(@Valid @RequestBody SectionDTO sectionDTO) {
+        logger.info("Creating section: {}", sectionDTO.getSectionCode());
+        SectionDTO createdSection = sectionService.createSection(sectionDTO);
+        logger.info("Section created successfully with ID: {}", createdSection.getId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(createdSection);
+        // GlobalExceptionHandler handles exceptions ✓
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<SectionDTO> updateSection(@PathVariable Long id, @RequestBody SectionDTO sectionDTO) {
-        try {
-            SectionDTO updatedSection = sectionService.updateSection(id, sectionDTO);
-            return ResponseEntity.ok(updatedSection);
-        } catch (RuntimeException e) {
-            System.err.println("Error updating section: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(null);
-        }
+    public ResponseEntity<SectionDTO> updateSection(@PathVariable Long id, @Valid @RequestBody SectionDTO sectionDTO) {
+        logger.info("Updating section with ID: {}", id);
+        SectionDTO updatedSection = sectionService.updateSection(id, sectionDTO);
+        logger.info("Section updated successfully: {}", id);
+        return ResponseEntity.ok(updatedSection);
+        // GlobalExceptionHandler handles exceptions ✓
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, String>> deleteSection(@PathVariable Long id) {
-        try {
-            sectionService.deleteSection(id);
-            return ResponseEntity.ok(Map.of("message", "Section deleted successfully"));
-        } catch (RuntimeException e) {
-            System.err.println("Error deleting section: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
-        }
+        logger.info("Deleting section with ID: {}", id);
+        sectionService.deleteSection(id);
+        logger.info("Section deleted successfully: {}", id);
+        return ResponseEntity.ok(Map.of("message", "Section deleted successfully"));
+        // GlobalExceptionHandler handles exceptions ✓
     }
 }
 

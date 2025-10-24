@@ -1,11 +1,12 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.request.CreateAttendanceSessionRequest;
-import com.smartattendance.dto.request.MarkAttendanceRequest;
-import com.smartattendance.dto.response.AttendanceRecordResponseDTO;
-import com.smartattendance.dto.response.AttendanceSessionResponseDTO;
+import com.smartattendance.dto.request.attendance.CreateAttendanceSessionRequest;
+import com.smartattendance.dto.request.attendance.MarkAttendanceRequest;
+import com.smartattendance.dto.response.attendance.AttendanceRecordResponseDTO;
+import com.smartattendance.dto.response.attendance.AttendanceSessionResponseDTO;
 import com.smartattendance.entity.AttendanceRecord;
 import com.smartattendance.entity.AttendanceSession;
+import com.smartattendance.entity.AttendanceStatus;
 import com.smartattendance.repository.AttendanceRecordRepository;
 import com.smartattendance.repository.AttendanceSessionRepository;
 import com.smartattendance.repository.SectionEnrollmentRepository;
@@ -62,7 +63,7 @@ class AttendanceServiceTest {
         testRecord.setId(1L);
         testRecord.setSessionId(1L);
         testRecord.setUserId("S0000001");
-        testRecord.setStatus("PRESENT");
+        testRecord.setStatus(AttendanceStatus.PRESENT);
     }
 
     @Test
@@ -155,7 +156,7 @@ class AttendanceServiceTest {
         record2.setId(2L);
         record2.setSessionId(1L);
         record2.setUserId("S0000002");
-        record2.setStatus("LATE");
+        record2.setStatus(AttendanceStatus.LATE);
 
         when(recordRepository.findBySessionId(1L)).thenReturn(Arrays.asList(testRecord, record2));
 

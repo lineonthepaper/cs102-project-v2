@@ -1,8 +1,9 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.response.SectionDTO;
+import com.smartattendance.dto.response.course.SectionDTO;
 import com.smartattendance.entity.Course;
 import com.smartattendance.entity.Section;
+import com.smartattendance.entity.Semester;
 import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.CourseRepository;
@@ -51,7 +52,7 @@ class SectionServiceTest {
         testSection.setCourse(testCourse);
         testSection.setSectionCode("CS102-01");
         testSection.setYear(2025);
-        testSection.setSemester(1);
+        testSection.setSemester(Semester.FALL);
         testSection.setMeetingDay(1); // Monday
         testSection.setStartTime(LocalTime.of(9, 0));
         testSection.setEndTime(LocalTime.of(10, 30));
@@ -77,7 +78,7 @@ class SectionServiceTest {
         section2.setCourse(testCourse);
         section2.setSectionCode("CS102-02");
         section2.setYear(2025);
-        section2.setSemester(1);
+        section2.setSemester(Semester.FALL);
         section2.setMeetingDay(3); // Wednesday
 
         SectionDTO sectionDTO2 = new SectionDTO();

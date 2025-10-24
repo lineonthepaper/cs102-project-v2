@@ -1,13 +1,14 @@
 package com.smartattendance.service;
 
-import com.smartattendance.dto.request.LoginRequest;
-import com.smartattendance.dto.request.RegisterRequest;
-import com.smartattendance.dto.response.LoginResponse;
-import com.smartattendance.dto.response.UserDTO;
+import com.smartattendance.dto.request.auth.LoginRequest;
+import com.smartattendance.dto.request.auth.RegisterRequest;
+import com.smartattendance.dto.response.auth.LoginResponse;
+import com.smartattendance.dto.response.auth.UserDTO;
 import com.smartattendance.entity.User;
 import com.smartattendance.exception.AuthenticationFailedException;
 import com.smartattendance.exception.DuplicateEmailException;
-import com.smartattendance.exception.UserNotFoundException;
+import com.smartattendance.exception.ResourceNotFoundException;
+import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -32,6 +33,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final RestTemplate restTemplate;
+    private final EntityMapper mapper;
 
     @Value("${supabase.url}")
     private String supabaseUrl;
@@ -39,9 +41,18 @@ public class AuthService {
     @Value("${supabase.service.role.key}")
     private String supabaseServiceRoleKey;
 
-    public AuthService(UserRepository userRepository) {
+    /**
+     * Constructor with dependency injection for better testability and adherence to DIP.
+     * RestTemplate and EntityMapper are now injected rather than directly instantiated.
+     * 
+     * @param userRepository the user repository
+     * @param restTemplate the REST template for HTTP requests
+     * @param mapper the entity mapper for DTO conversions
+     */
+    public AuthService(UserRepository userRepository, RestTemplate restTemplate, EntityMapper mapper) {
         this.userRepository = userRepository;
-        this.restTemplate = new RestTemplate();
+        this.restTemplate = restTemplate;
+        this.mapper = mapper;
     }
 
     @Transactional(readOnly = true)
@@ -81,14 +92,14 @@ public class AuthService {
             User user = userRepository.findByAuthId(authId)
                     .orElseThrow(() -> {
                         logger.error("User authenticated with Supabase but not found in database: {}", authId);
-                        return new UserNotFoundException("User authenticated but not found in local database");
+                        return new ResourceNotFoundException("User", "authenticated user");
                     });
             
             UserDTO userDTO = mapToUserDTO(user);
             
             logger.info("Login successful for user: {} (ID: {})", request.getEmail(), user.getId());
             return new LoginResponse(accessToken, refreshToken, userDTO);
-        } catch (AuthenticationFailedException | UserNotFoundException e) {
+        } catch (AuthenticationFailedException | ResourceNotFoundException e) {
             throw e;
         } catch (Exception e) {
             logger.error("Login failed for user: {}", request.getEmail(), e);
@@ -149,7 +160,7 @@ public class AuthService {
             
             // Fetch the newly created user
             User savedUser = userRepository.findById(generatedId)
-                    .orElseThrow(() -> new UserNotFoundException("Failed to fetch created user"));
+                    .orElseThrow(() -> new ResourceNotFoundException("User", generatedId));
             
             logger.info("Registration successful for: {} {} ({})", request.getFirstName(), request.getLastName(), request.getEmail());
             return mapToUserDTO(savedUser);
@@ -161,18 +172,17 @@ public class AuthService {
         }
     }
 
+    /**
+     * Map User to UserDTO.
+     * 
+     * REFACTORED: Now delegates to EntityMapper (DRY principle).
+     * Before: Manual DTO construction (12 lines of duplicate code)
+     * After: Single method call (1 line)
+     * 
+     * This eliminates code duplication and ensures consistency across the application.
+     */
     private UserDTO mapToUserDTO(User user) {
-        return new UserDTO(
-                user.getId(),
-                user.getEmail(),
-                user.getFirstName(),
-                user.getLastName(),
-                user.getIsStudent(),
-                user.getIsInstructor(),
-                user.getIsTA(),
-                user.getEnabled(),
-                user.getAuthId()
-        );
+        return mapper.toUserDTO(user);
     }
 }
 
