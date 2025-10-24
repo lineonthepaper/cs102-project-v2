@@ -17,4 +17,3 @@ public class AttendanceRecordDTO {
     private LocalDateTime checkoutTime;
     private AttendanceSessionDTO attendanceSession;
 }
-

@@ -18,4 +18,3 @@ public class UserDTO {
     private Boolean enabled;
     private String authId;
 }
-

@@ -13,4 +13,3 @@ public class CourseDTO {
     private String title;
     private String description;
 }
-

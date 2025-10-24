@@ -16,4 +16,3 @@ public class AttendanceRecordResponseDTO {
     private String checkoutTime;
     private String notes;
 }
-

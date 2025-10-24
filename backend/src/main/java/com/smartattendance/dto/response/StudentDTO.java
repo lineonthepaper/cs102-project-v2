@@ -27,4 +27,3 @@ public class StudentDTO {
     private List<EnrollmentDTO> enrollments;
     private List<AttendanceRecordDTO> attendanceRecords;
 }
-

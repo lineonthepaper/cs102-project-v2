@@ -19,4 +19,3 @@ public class AttendanceSessionDTO {
     private String notes;
     private SectionDTO section;
 }
-

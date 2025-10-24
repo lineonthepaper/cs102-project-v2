@@ -20,4 +20,3 @@ public class SectionDTO {
     private String location;
     private CourseDTO course;
 }
-

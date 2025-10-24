@@ -13,4 +13,3 @@ public class TAAssignmentDTO {
     private Long sectionId;
     private SectionDTO section;
 }
-

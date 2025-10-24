@@ -15,4 +15,3 @@ public class SectionAssignmentDTO {
     private Boolean isActive;
     private SectionDTO section;
 }
-

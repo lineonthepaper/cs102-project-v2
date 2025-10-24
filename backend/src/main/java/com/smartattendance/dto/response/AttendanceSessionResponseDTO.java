@@ -39,4 +39,3 @@ public class AttendanceSessionResponseDTO {
         private String title;
     }
 }
-

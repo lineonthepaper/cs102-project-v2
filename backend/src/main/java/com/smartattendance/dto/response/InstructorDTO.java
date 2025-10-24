@@ -18,4 +18,3 @@ public class InstructorDTO {
     private String authId;
     private List<SectionAssignmentDTO> sectionAssignments;
 }
-

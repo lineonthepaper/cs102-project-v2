@@ -21,4 +21,3 @@ public class TADTO {
     private String authId;
     private List<TAAssignmentDTO> taAssignments;
 }
-
