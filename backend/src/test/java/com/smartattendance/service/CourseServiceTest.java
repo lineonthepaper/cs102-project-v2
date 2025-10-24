@@ -3,6 +3,7 @@ package com.smartattendance.service;
 import com.smartattendance.dto.response.CourseDTO;
 import com.smartattendance.entity.Course;
 import com.smartattendance.exception.ResourceNotFoundException;
+import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.CourseRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,9 @@ class CourseServiceTest {
 
     @Mock
     private CourseRepository courseRepository;
+
+    @Mock
+    private EntityMapper mapper;
 
     @InjectMocks
     private CourseService courseService;
@@ -55,7 +59,14 @@ class CourseServiceTest {
         course2.setTitle("Data Structures");
         course2.setDescription("Advanced data structures");
 
+        CourseDTO courseDTO2 = new CourseDTO();
+        courseDTO2.setId(2L);
+        courseDTO2.setCode("CS201");
+        courseDTO2.setTitle("Data Structures");
+        courseDTO2.setDescription("Advanced data structures");
+
         when(courseRepository.findAll()).thenReturn(Arrays.asList(testCourse, course2));
+        when(mapper.toCourseDTOs(any())).thenReturn(Arrays.asList(testCourseDTO, courseDTO2));
 
         // Act
         List<CourseDTO> result = courseService.getAllCourses();
@@ -72,6 +83,7 @@ class CourseServiceTest {
     void getAllCourses_WhenNoCourses_ShouldReturnEmptyList() {
         // Arrange
         when(courseRepository.findAll()).thenReturn(Arrays.asList());
+        when(mapper.toCourseDTOs(any())).thenReturn(Arrays.asList());
 
         // Act
         List<CourseDTO> result = courseService.getAllCourses();
@@ -86,6 +98,7 @@ class CourseServiceTest {
     void createCourse_WithValidData_ShouldReturnCreatedCourse() {
         // Arrange
         when(courseRepository.save(any(Course.class))).thenReturn(testCourse);
+        when(mapper.toCourseDTO(any(Course.class))).thenReturn(testCourseDTO);
 
         // Act
         CourseDTO result = courseService.createCourse(testCourseDTO);
@@ -107,6 +120,7 @@ class CourseServiceTest {
 
         when(courseRepository.findById(1L)).thenReturn(Optional.of(testCourse));
         when(courseRepository.save(any(Course.class))).thenReturn(testCourse);
+        when(mapper.toCourseDTO(any(Course.class))).thenReturn(testCourseDTO);
 
         // Act
         CourseDTO result = courseService.updateCourse(1L, updateDTO);

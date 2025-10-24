@@ -4,6 +4,7 @@ import com.smartattendance.dto.response.SectionDTO;
 import com.smartattendance.entity.Course;
 import com.smartattendance.entity.Section;
 import com.smartattendance.exception.ResourceNotFoundException;
+import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.CourseRepository;
 import com.smartattendance.repository.SectionRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +28,9 @@ class SectionServiceTest {
 
     @Mock
     private SectionRepository sectionRepository;
+
+    @Mock
+    private EntityMapper mapper;
 
     @InjectMocks
     private SectionService sectionService;
@@ -76,7 +80,12 @@ class SectionServiceTest {
         section2.setSemester(1);
         section2.setMeetingDay(3); // Wednesday
 
+        SectionDTO sectionDTO2 = new SectionDTO();
+        sectionDTO2.setSectionCode("CS102-02");
+        sectionDTO2.setMeetingDay("Wednesday");
+
         when(sectionRepository.findAll()).thenReturn(Arrays.asList(testSection, section2));
+        when(mapper.toSectionDTOs(any())).thenReturn(Arrays.asList(testSectionDTO, sectionDTO2));
 
         // Act
         List<SectionDTO> result = sectionService.getAllSections();
@@ -94,6 +103,7 @@ class SectionServiceTest {
     void createSection_WithValidData_ShouldReturnCreatedSection() {
         // Arrange
         when(sectionRepository.save(any(Section.class))).thenReturn(testSection);
+        when(mapper.toSectionDTO(any(Section.class))).thenReturn(testSectionDTO);
 
         // Act
         SectionDTO result = sectionService.createSection(testSectionDTO);
@@ -117,7 +127,11 @@ class SectionServiceTest {
         fridaySection.setSectionCode("CS102-02");
         fridaySection.setMeetingDay(5); // Friday
         
+        SectionDTO fridayDTO = new SectionDTO();
+        fridayDTO.setMeetingDay("Friday");
+        
         when(sectionRepository.save(any(Section.class))).thenReturn(fridaySection);
+        when(mapper.toSectionDTO(any(Section.class))).thenReturn(fridayDTO);
 
         // Act
         SectionDTO result = sectionService.createSection(testSectionDTO);
@@ -140,6 +154,7 @@ class SectionServiceTest {
 
         when(sectionRepository.findById(1L)).thenReturn(Optional.of(testSection));
         when(sectionRepository.save(any(Section.class))).thenReturn(testSection);
+        when(mapper.toSectionDTO(any(Section.class))).thenReturn(testSectionDTO);
 
         // Act
         SectionDTO result = sectionService.updateSection(1L, updateDTO);
@@ -181,6 +196,9 @@ class SectionServiceTest {
         testSectionDTO.setMeetingDay("Wednesday");
         Section wednesdaySection = new Section();
         wednesdaySection.setId(3L);
+        
+        SectionDTO wednesdayDTO = new SectionDTO();
+        wednesdayDTO.setMeetingDay("Wednesday");
         wednesdaySection.setMeetingDay(3); // Wednesday
         
         when(sectionRepository.save(any(Section.class))).thenAnswer(invocation -> {
@@ -189,6 +207,7 @@ class SectionServiceTest {
             assertEquals(3, section.getMeetingDay());
             return wednesdaySection;
         });
+        when(mapper.toSectionDTO(any(Section.class))).thenReturn(wednesdayDTO);
 
         sectionService.createSection(testSectionDTO);
         

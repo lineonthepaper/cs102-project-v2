@@ -44,6 +44,9 @@ class StudentServiceTest {
     @Mock
     private EntityManager entityManager;
 
+    @Mock
+    private com.smartattendance.mapper.EntityMapper mapper;
+
     @InjectMocks
     private StudentService studentService;
 
@@ -67,6 +70,8 @@ class StudentServiceTest {
         // Arrange
         when(userRepository.findAll()).thenReturn(List.of(testStudent));
         when(attendanceRecordRepository.findByUserIdIn(any())).thenReturn(Collections.emptyList());
+        when(mapper.toAttendanceRecordDTOs(any())).thenReturn(Collections.emptyList());
+        when(mapper.toEnrollmentDTOs(any())).thenReturn(Collections.emptyList());
 
         // Act
         List<StudentDTO> result = studentService.getAllStudents();

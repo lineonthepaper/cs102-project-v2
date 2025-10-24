@@ -5,7 +5,9 @@ import com.smartattendance.dto.request.MarkAttendanceRequest;
 import com.smartattendance.dto.response.AttendanceRecordResponseDTO;
 import com.smartattendance.dto.response.AttendanceSessionResponseDTO;
 import com.smartattendance.entity.*;
+import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
+import com.smartattendance.util.DateTimeUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,16 +25,19 @@ public class AttendanceService {
     private final AttendanceRecordRepository recordRepository;
     private final SectionRepository sectionRepository;
     private final SectionEnrollmentRepository enrollmentRepository;
+    private final EntityMapper mapper;
 
     public AttendanceService(
             AttendanceSessionRepository sessionRepository,
             AttendanceRecordRepository recordRepository,
             SectionRepository sectionRepository,
-            SectionEnrollmentRepository enrollmentRepository) {
+            SectionEnrollmentRepository enrollmentRepository,
+            EntityMapper mapper) {
         this.sessionRepository = sessionRepository;
         this.recordRepository = recordRepository;
         this.sectionRepository = sectionRepository;
         this.enrollmentRepository = enrollmentRepository;
+        this.mapper = mapper;
     }
 
     @Transactional(readOnly = true)
@@ -118,7 +123,7 @@ public class AttendanceService {
             sectionInfo.setSectionCode(section.getSectionCode());
             sectionInfo.setYear(section.getYear());
             sectionInfo.setSemester(section.getSemester());
-            sectionInfo.setDayOfWeek(dayNumberToName(section.getMeetingDay()));
+            sectionInfo.setDayOfWeek(DateTimeUtils.dayNumberToName(section.getMeetingDay()));
             sectionInfo.setStartTime(section.getStartTime() != null ? section.getStartTime().toString() : null);
             sectionInfo.setEndTime(section.getEndTime() != null ? section.getEndTime().toString() : null);
             sectionInfo.setLocation(section.getLocation());
@@ -149,20 +154,6 @@ public class AttendanceService {
             record.getCheckoutTime().toString() : null);
         dto.setNotes(record.getNotes());
         return dto;
-    }
-
-    private String dayNumberToName(Integer dayNumber) {
-        if (dayNumber == null) return null;
-        return switch (dayNumber) {
-            case 1 -> "Monday";
-            case 2 -> "Tuesday";
-            case 3 -> "Wednesday";
-            case 4 -> "Thursday";
-            case 5 -> "Friday";
-            case 6 -> "Saturday";
-            case 7 -> "Sunday";
-            default -> null;
-        };
     }
 }
 

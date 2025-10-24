@@ -7,6 +7,7 @@ import com.smartattendance.entity.*;
 import com.smartattendance.exception.DuplicateEmailException;
 import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.exception.UserNotFoundException;
+import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -32,18 +33,21 @@ public class StudentService {
     private final SectionEnrollmentRepository enrollmentRepository;
     private final CourseRepository courseRepository;
     private final SectionRepository sectionRepository;
+    private final EntityMapper mapper;
 
     public StudentService(
             UserRepository userRepository,
             AttendanceRecordRepository attendanceRecordRepository,
             SectionEnrollmentRepository enrollmentRepository,
             CourseRepository courseRepository,
-            SectionRepository sectionRepository) {
+            SectionRepository sectionRepository,
+            EntityMapper mapper) {
         this.userRepository = userRepository;
         this.attendanceRecordRepository = attendanceRecordRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.courseRepository = courseRepository;
         this.sectionRepository = sectionRepository;
+        this.mapper = mapper;
     }
 
     @Transactional(readOnly = true)
@@ -202,105 +206,11 @@ public class StudentService {
         dto.setAttendanceRate(attendanceRate);
         dto.setPunctualityRate(punctualityRate);
 
-        // Map attendance records
-        dto.setAttendanceRecords(attendanceRecords.stream()
-                .<AttendanceRecordDTO>map(this::mapToAttendanceRecordDTO)
-                .collect(Collectors.toList()));
+        // Map attendance records using EntityMapper
+        dto.setAttendanceRecords(mapper.toAttendanceRecordDTOs(attendanceRecords));
 
-        // Map enrollments
-        dto.setEnrollments(enrollments.stream()
-                .<EnrollmentDTO>map(this::mapToEnrollmentDTO)
-                .collect(Collectors.toList()));
-
-        return dto;
-    }
-
-    private EnrollmentDTO mapToEnrollmentDTO(SectionEnrollment enrollment) {
-        EnrollmentDTO dto = new EnrollmentDTO();
-        dto.setId(enrollment.getId());
-        dto.setUserId(enrollment.getUserId());
-        dto.setSectionId(enrollment.getSectionId());
-        dto.setIsActive(enrollment.getIsActive());
-        dto.setEnrolledAt(enrollment.getEnrolledAt());
-
-        if (enrollment.getSection() != null) {
-            dto.setSection(mapToSectionDTO(enrollment.getSection()));
-        }
-
-        return dto;
-    }
-
-    private SectionDTO mapToSectionDTO(Section section) {
-        SectionDTO dto = new SectionDTO();
-        dto.setId(section.getId());
-        dto.setSectionCode(section.getSectionCode());
-        dto.setCourseId(section.getCourseId());
-        dto.setYear(section.getYear());
-        dto.setSemester(section.getSemester());
-        dto.setMeetingDay(dayNumberToName(section.getMeetingDay()));
-        dto.setStartTime(section.getStartTime());
-        dto.setEndTime(section.getEndTime());
-        dto.setLocation(section.getLocation());
-
-        if (section.getCourse() != null) {
-            dto.setCourse(mapToCourseDTO(section.getCourse()));
-        }
-
-        return dto;
-    }
-    
-    private String dayNumberToName(Integer dayNumber) {
-        if (dayNumber == null) return null;
-        return switch (dayNumber) {
-            case 1 -> "Monday";
-            case 2 -> "Tuesday";
-            case 3 -> "Wednesday";
-            case 4 -> "Thursday";
-            case 5 -> "Friday";
-            case 6 -> "Saturday";
-            case 7 -> "Sunday";
-            default -> null;
-        };
-    }
-
-    private CourseDTO mapToCourseDTO(Course course) {
-        CourseDTO dto = new CourseDTO();
-        dto.setId(course.getId());
-        dto.setCode(course.getCode());
-        dto.setTitle(course.getTitle());
-        dto.setDescription(course.getDescription());
-        return dto;
-    }
-
-    private AttendanceRecordDTO mapToAttendanceRecordDTO(AttendanceRecord record) {
-        AttendanceRecordDTO dto = new AttendanceRecordDTO();
-        dto.setId(record.getId());
-        dto.setUserId(record.getUserId());
-        dto.setSessionId(record.getSessionId());
-        dto.setStatus(record.getStatus());
-        dto.setCheckinTime(record.getCheckinTime());
-        dto.setCheckoutTime(record.getCheckoutTime());
-
-        if (record.getAttendanceSession() != null) {
-            dto.setAttendanceSession(mapToAttendanceSessionDTO(record.getAttendanceSession()));
-        }
-
-        return dto;
-    }
-
-    private AttendanceSessionDTO mapToAttendanceSessionDTO(AttendanceSession session) {
-        AttendanceSessionDTO dto = new AttendanceSessionDTO();
-        dto.setId(session.getId());
-        dto.setSectionId(session.getSectionId());
-        dto.setSessionDate(session.getSessionDate());
-        dto.setScheduledStartTime(session.getScheduledStartTime());
-        dto.setScheduledEndTime(session.getScheduledEndTime());
-        dto.setStatus(session.getStatus());
-        dto.setNotes(session.getNotes());
-
-        if (session.getSection() != null) {
-            dto.setSection(mapToSectionDTO(session.getSection()));
-        }
+        // Map enrollments using EntityMapper
+        dto.setEnrollments(mapper.toEnrollmentDTOs(enrollments));
 
         return dto;
     }

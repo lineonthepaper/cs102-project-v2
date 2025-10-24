@@ -4,7 +4,9 @@ import com.smartattendance.dto.request.AddInstructorRequest;
 import com.smartattendance.dto.request.UpdateInstructorAssignmentsRequest;
 import com.smartattendance.dto.response.*;
 import com.smartattendance.entity.*;
+import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
+import com.smartattendance.util.DateTimeUtils;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Service;
@@ -23,13 +25,15 @@ public class InstructorService {
     private final SectionAssignmentRepository sectionAssignmentRepository;
     private final SectionRepository sectionRepository;
     private final CourseRepository courseRepository;
+    private final EntityMapper mapper;
 
     public InstructorService(UserRepository userRepository, SectionAssignmentRepository sectionAssignmentRepository,
-                            SectionRepository sectionRepository, CourseRepository courseRepository) {
+                            SectionRepository sectionRepository, CourseRepository courseRepository, EntityMapper mapper) {
         this.userRepository = userRepository;
         this.sectionAssignmentRepository = sectionAssignmentRepository;
         this.sectionRepository = sectionRepository;
         this.courseRepository = courseRepository;
+        this.mapper = mapper;
     }
 
     @Transactional(readOnly = true)
@@ -140,7 +144,7 @@ public class InstructorService {
                                 assignment.getSection().getCourseId(),
                                 assignment.getSection().getYear(),
                                 assignment.getSection().getSemester(),
-                                dayNumberToName(assignment.getSection().getMeetingDay()),
+                                DateTimeUtils.dayNumberToName(assignment.getSection().getMeetingDay()),
                                 assignment.getSection().getStartTime(),
                                 assignment.getSection().getEndTime(),
                                 assignment.getSection().getLocation(),
@@ -161,20 +165,6 @@ public class InstructorService {
                 user.getAuthId(),
                 assignmentDTOs
         );
-    }
-    
-    private String dayNumberToName(Integer dayNumber) {
-        if (dayNumber == null) return null;
-        return switch (dayNumber) {
-            case 1 -> "Monday";
-            case 2 -> "Tuesday";
-            case 3 -> "Wednesday";
-            case 4 -> "Thursday";
-            case 5 -> "Friday";
-            case 6 -> "Saturday";
-            case 7 -> "Sunday";
-            default -> null;
-        };
     }
 }
 
