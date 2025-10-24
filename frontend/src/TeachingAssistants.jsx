@@ -12,6 +12,7 @@ function TeachingAssistants() {
 
   // Teaching Assistants State
   const [users, setUsers] = useState([])
+  const [tas, setTas] = useState([]) // List of TAs from backend
   const [courses, setCourses] = useState([])
   const [taAssignments, setTaAssignments] = useState([])
   const [showTAModal, setShowTAModal] = useState(false)
@@ -50,6 +51,7 @@ function TeachingAssistants() {
 
   // Teaching Assistants Functions
   const fetchUsers = async () => {
+    // Fetch all users (students and instructors) from Supabase for the candidate lookup
     const { data, error } = await supabase
       .from('users')
       .select('*')
@@ -69,17 +71,75 @@ function TeachingAssistants() {
   }
 
   const fetchTaAssignments = async () => {
-    const { data, error } = await supabase
-      .from('ta_assignments')
-      .select(`
-        *,
-        courses(*),
-        sections(*),
-        users(*)
-      `)
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/teaching-assistants`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch teaching assistants')
+      }
 
-    if (error) throw error
-    setTaAssignments(data || [])
+      const tasData = await response.json()
+
+      // Transform backend data to frontend format for TAs list
+      const transformedTAs = tasData.map(ta => ({
+        id: ta.id,
+        email: ta.email,
+        first_name: ta.firstName,
+        last_name: ta.lastName,
+        is_student: ta.isStudent,
+        is_instructor: ta.isInstructor,
+        is_ta: ta.isTA,
+        enabled: ta.enabled,
+        auth_id: ta.authId
+      }))
+
+      setTas(transformedTAs)
+
+      // Transform backend data to frontend format for assignments
+      const transformedAssignments = []
+      tasData.forEach(ta => {
+        if (ta.taAssignments && ta.taAssignments.length > 0) {
+          ta.taAssignments.forEach(assignment => {
+            transformedAssignments.push({
+              id: assignment.id,
+              user_id: assignment.userId,
+              section_id: assignment.sectionId,
+              sections: assignment.section ? {
+                id: assignment.section.id,
+                section_code: assignment.section.sectionCode,
+                course_id: assignment.section.courseId,
+                year: assignment.section.year,
+                semester: assignment.section.semester,
+                day_of_week: assignment.section.meetingDay,
+                start_time: assignment.section.startTime,
+                end_time: assignment.section.endTime,
+                location: assignment.section.location,
+                schedule: `${assignment.section.meetingDay?.substring(0, 3) || ''} ${assignment.section.startTime || ''}-${assignment.section.endTime || ''}`,
+                courses: assignment.section.course ? {
+                  id: assignment.section.course.id,
+                  code: assignment.section.course.code,
+                  title: assignment.section.course.title,
+                  description: assignment.section.course.description
+                } : null
+              } : null,
+              users: {
+                id: ta.id,
+                email: ta.email,
+                first_name: ta.firstName,
+                last_name: ta.lastName,
+                is_student: ta.isStudent,
+                is_instructor: ta.isInstructor,
+                is_ta: ta.isTA
+              }
+            })
+          })
+        }
+      })
+
+      setTaAssignments(transformedAssignments)
+    } catch (error) {
+      console.error('Error fetching TA assignments:', error)
+      throw error
+    }
   }
 
   const fetchSections = async () => {
@@ -247,6 +307,16 @@ function TeachingAssistants() {
           throw new Error('Auth sign up did not return a user id')
         }
 
+        // Update user with auth_id first
+        const { error: authUpdateError } = await supabase
+          .from('users')
+          .update({ auth_id: authId })
+          .eq('id', existingUser.id)
+
+        if (authUpdateError) {
+          console.error('Failed to update auth_id:', authUpdateError)
+        }
+
         if (signUpData?.session && adminSessionTokens) {
           const { error: restoreError } = await supabase.auth.setSession(adminSessionTokens)
           if (restoreError) {
@@ -261,17 +331,24 @@ function TeachingAssistants() {
         return
       }
 
-      // Update user to be a TA
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({
-          is_ta: true,
-          enabled: true,
-          auth_id: authId || existingUser.auth_id
+      // Call backend API to update user to be a TA
+      const response = await fetch(`${API_BASE_URL}/api/teaching-assistants`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: email,
+          password: password || '',
+          type: taType
         })
-        .eq('id', existingUser.id)
+      })
 
-      if (updateError) throw updateError
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to add Teaching Assistant')
+      }
 
       // Refresh data
       await fetchUsers()
@@ -279,7 +356,7 @@ function TeachingAssistants() {
 
       // Reset and close modal
       closeAddTAModal()
-      alert(`Teaching Assistant account created successfully for ${existingUser.first_name} ${existingUser.last_name}.`)
+      alert(result.message || `Teaching Assistant account created successfully for ${existingUser.first_name} ${existingUser.last_name}.`)
 
     } catch (error) {
       console.error('Error adding TA:', error)
@@ -302,23 +379,16 @@ function TeachingAssistants() {
 
       if (userFetchError) throw userFetchError
 
-      // Remove all TA assignments
-      await supabase
-        .from('ta_assignments')
-        .delete()
-        .eq('user_id', user.id)
+      // Call backend API to remove TA
+      const response = await fetch(`${API_BASE_URL}/api/teaching-assistants/${user.id}`, {
+        method: 'DELETE'
+      })
 
-      // Update user to remove TA status but keep them as student
-      const { error } = await supabase
-        .from('users')
-        .update({
-          is_ta: false,
-          enabled: false, // Disable login temporarily
-          auth_id: null // Remove from authenticated users
-        })
-        .eq('id', user.id)
+      const result = await response.json()
 
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to remove Teaching Assistant')
+      }
 
       // If user had auth_id, remove them from Supabase Auth
       if (userData?.auth_id) {
@@ -326,13 +396,13 @@ function TeachingAssistants() {
         console.log('Attempting to remove user from Supabase Auth via backend. Auth ID:', authId)
 
         try {
-          const response = await fetch(`${API_BASE_URL}/api/admin/teaching-assistants/${authId}`, {
+          const authResponse = await fetch(`${API_BASE_URL}/api/admin/teaching-assistants/${authId}`, {
             method: 'DELETE'
           })
 
-          if (!response.ok) {
-            const errorText = await response.text()
-            console.warn('Backend failed to remove user from Supabase Auth:', response.status, errorText)
+          if (!authResponse.ok) {
+            const errorText = await authResponse.text()
+            console.warn('Backend failed to remove user from Supabase Auth:', authResponse.status, errorText)
             alert('Warning: Could not remove user from Supabase Auth system. The TA account has been disabled in the app but remains in Supabase Auth.')
           } else {
             console.log('User successfully removed from Supabase Auth via backend endpoint.')
@@ -421,31 +491,28 @@ function TeachingAssistants() {
     try {
       if (!selectedUser) return
 
-      // Delete existing assignments for this user
-      await supabase
-        .from('ta_assignments')
-        .delete()
-        .eq('user_id', selectedUser.id)
+      // Call backend API to update TA assignments
+      const response = await fetch(`${API_BASE_URL}/api/teaching-assistants/${selectedUser.id}/assignments`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          sectionIds: selectedSections
+        })
+      })
 
-      // Insert new assignments
-      if (selectedSections.length > 0) {
-        const assignmentsToInsert = selectedSections.map(sectionId => ({
-          user_id: selectedUser.id,
-          section_id: sectionId
-        }))
+      const result = await response.json()
 
-        const { error } = await supabase
-          .from('ta_assignments')
-          .insert(assignmentsToInsert)
-
-        if (error) throw error
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to save TA assignments')
       }
 
       await fetchTaAssignments()
       closeTAModal()
     } catch (error) {
       console.error('Error saving TA assignments:', error)
-      alert('Failed to save TA assignments')
+      alert(error.message || 'Failed to save TA assignments')
     }
   }
 
@@ -488,7 +555,7 @@ function TeachingAssistants() {
             </tr>
           </thead>
           <tbody>
-            {users.filter(user => user.is_ta).map(user => {
+            {tas.map(user => {
               const userAssignments = taAssignments.filter(ta => ta.user_id === user.id)
               const assignedSections = userAssignments.map(ta => ta.sections).filter(Boolean)
 

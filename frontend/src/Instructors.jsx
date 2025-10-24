@@ -12,6 +12,7 @@ function Instructors() {
   const [courses, setCourses] = useState([])
   const [sections, setSections] = useState([])
   const [instructorAssignments, setInstructorAssignments] = useState([])
+  const [instructorAssignmentsList, setInstructorAssignmentsList] = useState([])
 
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -46,13 +47,59 @@ function Instructors() {
   }
 
   const fetchInstructors = async () => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('is_instructor', true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/instructors`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch instructors')
+      }
 
-    if (error) throw error
-    setInstructors(data || [])
+      const instructorsData = await response.json()
+
+      // Transform backend data to frontend format
+      const transformedInstructors = instructorsData.map(instructor => ({
+        id: instructor.id,
+        email: instructor.email,
+        first_name: instructor.firstName,
+        last_name: instructor.lastName,
+        enabled: instructor.enabled,
+        auth_id: instructor.authId,
+        is_instructor: true
+      }))
+
+      setInstructors(transformedInstructors)
+
+      // Extract section assignments
+      const assignments = []
+      instructorsData.forEach(instructor => {
+        if (instructor.sectionAssignments && instructor.sectionAssignments.length > 0) {
+          instructor.sectionAssignments.forEach(assignment => {
+            assignments.push({
+              id: assignment.id,
+              user_id: assignment.userId,
+              section_id: assignment.sectionId,
+              role: assignment.role,
+              is_active: assignment.isActive,
+              sections: assignment.section ? {
+                id: assignment.section.id,
+                section_code: assignment.section.sectionCode,
+                course_id: assignment.section.courseId,
+                courses: assignment.section.course ? {
+                  id: assignment.section.course.id,
+                  code: assignment.section.course.code,
+                  title: assignment.section.course.title
+                } : null
+              } : null
+            })
+          })
+        }
+      })
+
+      setInstructorAssignmentsList(assignments)
+      setInstructorAssignments(assignments)
+    } catch (error) {
+      console.error('Error fetching instructors:', error)
+      throw error
+    }
   }
 
   const fetchSections = async () => {
@@ -77,24 +124,9 @@ function Instructors() {
   }
 
   const fetchInstructorAssignments = async () => {
-    const { data, error } = await supabase
-      .from('section_assignments')
-      .select(`
-        id,
-        user_id,
-        section_id,
-        role,
-        is_active,
-        sections (
-          *,
-          courses (*)
-        )
-      `)
-      .eq('role', 'INSTRUCTOR')
-      .eq('is_active', true)
-
-    if (error) throw error
-    setInstructorAssignments(data || [])
+    // This is now handled by fetchInstructors
+    // Just in case we need to refresh separately
+    await fetchInstructors()
   }
 
   const openAssignModal = (instructor) => {
@@ -184,33 +216,27 @@ function Instructors() {
     if (!selectedInstructor) return
 
     try {
-      // Remove existing instructor assignments
-      await supabase
-        .from('section_assignments')
-        .delete()
-        .eq('user_id', selectedInstructor.id)
-        .eq('role', 'INSTRUCTOR')
+      const response = await fetch(`${API_BASE_URL}/api/instructors/${selectedInstructor.id}/assignments`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          sectionIds: selectedSections
+        })
+      })
 
-      if (selectedSections.length > 0) {
-        const payload = selectedSections.map((sectionId) => ({
-          user_id: selectedInstructor.id,
-          section_id: sectionId,
-          role: 'INSTRUCTOR',
-          is_active: true
-        }))
+      const result = await response.json()
 
-        const { error } = await supabase
-          .from('section_assignments')
-          .insert(payload)
-
-        if (error) throw error
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to save instructor assignments')
       }
 
       await fetchInstructorAssignments()
       closeAssignModal()
     } catch (error) {
       console.error('Failed to save instructor assignments:', error)
-      alert('Failed to save instructor assignments')
+      alert(error.message || 'Failed to save instructor assignments')
     }
   }
 
@@ -225,21 +251,10 @@ function Instructors() {
       return
     }
 
-
     setAddingInstructor(true)
 
     try {
-      const { data: existingUser, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .maybeSingle()
-
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        throw fetchError
-      }
-
-      let authId = existingUser?.auth_id ?? null
+      // First, create Supabase Auth account
       const adminSession = await supabase.auth.getSession()
       const adminTokens = adminSession?.data?.session
         ? {
@@ -248,72 +263,57 @@ function Instructors() {
           }
         : null
 
-      if (!authId) {
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email,
-          password
-        })
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password
+      })
 
-        if (signUpError) {
-          throw new Error(signUpError.message || 'Unable to create authentication account')
-        }
-
-        authId = signUpData?.user?.id || null
-
-        if (signUpData?.session && adminTokens) {
-          const { error: restoreError } = await supabase.auth.setSession(adminTokens)
-          if (restoreError) {
-            console.warn('Instructor account created but admin session was not restored automatically.', restoreError)
-          }
-        }
+      if (signUpError) {
+        throw new Error(signUpError.message || 'Unable to create authentication account')
       }
+
+      const authId = signUpData?.user?.id
 
       if (!authId) {
         throw new Error('Failed to obtain authentication id for the instructor.')
       }
 
-      if (existingUser) {
-        const { error: updateError } = await supabase
+      if (signUpData?.session && adminTokens) {
+        const { error: restoreError } = await supabase.auth.setSession(adminTokens)
+        if (restoreError) {
+          console.warn('Instructor account created but admin session was not restored automatically.', restoreError)
+        }
+      }
+
+      // Then, call backend API to create instructor in database
+      const response = await fetch(`${API_BASE_URL}/api/instructors`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          firstName,
+          lastName
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to add instructor')
+      }
+
+      // Update the instructor with auth_id
+      if (result.id && authId) {
+        const { error: authUpdateError } = await supabase
           .from('users')
-          .update({
-            first_name: firstName,
-            last_name: lastName,
-            is_instructor: true,
-            enabled: true,
-            auth_id: authId
-          })
-          .eq('id', existingUser.id)
+          .update({ auth_id: authId })
+          .eq('id', result.id)
 
-        if (updateError) throw updateError
-      } else {
-        // Create instructor record in database (database trigger will auto-generate IDs like I0000001)
-        const { data: newUser, error: insertError } = await supabase
-          .from('users')
-          .insert({
-            email,
-            first_name: firstName,
-            last_name: lastName,
-            is_instructor: true,
-            is_student: false,
-            is_ta: false,
-            enabled: true,
-            created_at: new Date().toISOString()
-          })
-          .select() // Return the created record to see the generated ID
-          .single()
-
-        if (insertError) throw insertError
-
-        // Update the user with auth_id
-        if (newUser && authId) {
-          const { error: updateAuthError } = await supabase
-            .from('users')
-            .update({ auth_id: authId })
-            .eq('id', newUser.id)
-
-          if (updateAuthError) {
-            console.error('Failed to update auth_id:', updateAuthError)
-          }
+        if (authUpdateError) {
+          console.error('Failed to update auth_id:', authUpdateError)
         }
       }
 
@@ -335,7 +335,7 @@ function Instructors() {
     }
 
     try {
-      // Get the user's auth_id before removing instructor status
+      // Get the user's auth_id before removing instructor
       const { data: userData, error: userFetchError } = await supabase
         .from('users')
         .select('auth_id')
@@ -344,32 +344,30 @@ function Instructors() {
 
       if (userFetchError) throw userFetchError
 
-      // Delete all section assignments
-      await supabase
-        .from('section_assignments')
-        .delete()
-        .eq('user_id', instructor.id)
-        .eq('role', 'INSTRUCTOR')
+      // Call backend API to remove instructor
+      const response = await fetch(`${API_BASE_URL}/api/instructors/${instructor.id}`, {
+        method: 'DELETE'
+      })
 
-      // Delete all TA assignments
-      await supabase
-        .from('ta_assignments')
-        .delete()
-        .eq('user_id', instructor.id)
+      const result = await response.json()
 
-      // If user had auth_id, remove them from Supabase Auth first
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to remove instructor')
+      }
+
+      // If user had auth_id, remove them from Supabase Auth
       if (userData?.auth_id) {
         const authId = userData.auth_id
         console.log('Attempting to remove instructor from Supabase Auth. Auth ID:', authId)
 
         try {
-          const response = await fetch(`${API_BASE_URL}/api/admin/instructors/${authId}`, {
+          const authResponse = await fetch(`${API_BASE_URL}/api/admin/instructors/${authId}`, {
             method: 'DELETE'
           })
 
-          if (!response.ok) {
-            const errorText = await response.text()
-            console.warn('Failed to remove instructor from Supabase Auth:', response.status, errorText)
+          if (!authResponse.ok) {
+            const errorText = await authResponse.text()
+            console.warn('Failed to remove instructor from Supabase Auth:', authResponse.status, errorText)
           } else {
             console.log('Instructor successfully removed from Supabase Auth.')
           }
@@ -378,19 +376,11 @@ function Instructors() {
         }
       }
 
-      // Delete the user from the database
-      const { error } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', instructor.id)
-
-      if (error) throw error
-
       await fetchInstructors()
       await fetchInstructorAssignments()
     } catch (error) {
       console.error('Failed to remove instructor:', error)
-      alert('Failed to remove instructor')
+      alert(error.message || 'Failed to remove instructor')
     }
   }
 

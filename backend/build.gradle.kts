@@ -22,8 +22,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
-    compileOnly("org.projectlombok:lombok")
-    annotationProcessor("org.projectlombok:lombok")
+    compileOnly("org.projectlombok:lombok:1.18.34")
+    annotationProcessor("org.projectlombok:lombok:1.18.34")
 
     runtimeOnly("org.postgresql:postgresql")
 
@@ -32,4 +32,13 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+    environment("DATABASE_URL", System.getenv("DATABASE_URL") ?: "")
+    environment("DATABASE_USERNAME", System.getenv("DATABASE_USERNAME") ?: "")
+    environment("DATABASE_PASSWORD", System.getenv("DATABASE_PASSWORD") ?: "")
+    environment("SUPABASE_URL", System.getenv("SUPABASE_URL") ?: "")
+    environment("SUPABASE_SERVICE_ROLE_KEY", System.getenv("SUPABASE_SERVICE_ROLE_KEY") ?: "")
+    environment("JWT_SECRET", System.getenv("JWT_SECRET") ?: "")
 }

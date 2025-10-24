@@ -1,27 +1,30 @@
 @echo off
-REM Run the frontend with environment variables from env file
+REM Run the frontend with proper environment variables
 
-cd /d "%~dp0\.."
+REM Get the project root directory (parent of scripts)
+set "PROJECT_ROOT=%~dp0\.."
+cd /d "%PROJECT_ROOT%"
 
-echo Loading environment variables...
-
-REM Read env file and set variables (skip lines starting with # or empty)
+REM Load env vars from env file - set all non-comment variables
 for /f "usebackq eol=# tokens=1,* delims==" %%a in ("env") do (
-    if "%%a"=="APP_SUPABASE_URL" set "VITE_SUPABASE_URL=%%b"
-    if "%%a"=="APP_SUPABASE_KEY" set "VITE_SUPABASE_ANON_KEY=%%b"
+    set "%%a=%%b"
 )
 
+REM Map to Vite expected vars
+if not defined VITE_SUPABASE_URL set "VITE_SUPABASE_URL=%APP_SUPABASE_URL%"
+if defined SUPABASE_URL if not defined VITE_SUPABASE_URL set "VITE_SUPABASE_URL=%SUPABASE_URL%"
+set "VITE_SUPABASE_ANON_KEY=%APP_SUPABASE_KEY%"
 set "VITE_API_BASE_URL=http://localhost:8080"
 
 echo ============================================
+echo Frontend environment:
 echo VITE_SUPABASE_URL=%VITE_SUPABASE_URL%
 echo VITE_API_BASE_URL=%VITE_API_BASE_URL%
 echo ============================================
 echo.
 
-cd frontend
+cd /d "%PROJECT_ROOT%\frontend"
 echo Installing dependencies...
 call npm install
 echo Starting frontend...
 call npm run dev
-

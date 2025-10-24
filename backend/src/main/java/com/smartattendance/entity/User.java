@@ -1,4 +1,4 @@
-package com.smartattendance.model;
+package com.smartattendance.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;

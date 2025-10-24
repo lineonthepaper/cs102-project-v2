@@ -1,4 +1,4 @@
-package com.smartattendance.controller;
+package com.smartattendance.controller.admin;
 
 import com.smartattendance.service.SupabaseAuthService;
 import java.util.HashMap;

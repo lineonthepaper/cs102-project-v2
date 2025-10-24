@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabase'
 
+const API_BASE_URL = 'http://localhost:8080'
+
 function Attendance() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
@@ -172,55 +174,112 @@ function Attendance() {
   }
 
   const fetchSections = async () => {
-    const { data, error } = await supabase
-      .from('sections')
-      .select(`
-        *,
-        courses(code, title)
-      `)
-      .order('year', { ascending: false })
-      .order('semester', { ascending: false })
-
-    if (error) throw error
-    setSectionList(data || [])
+    const response = await fetch(`${API_BASE_URL}/api/sections`)
+    if (!response.ok) throw new Error('Failed to fetch sections')
+    
+    const data = await response.json()
+    
+    // Transform backend data to match frontend expectations
+    const transformedData = data.map(section => ({
+      ...section,
+      courses: section.course ? {
+        code: section.course.code,
+        title: section.course.title
+      } : null
+    }))
+    
+    // Sort by year and semester descending
+    transformedData.sort((a, b) => {
+      if (b.year !== a.year) return b.year - a.year
+      return b.semester - a.semester
+    })
+    
+    setSectionList(transformedData)
   }
 
   const fetchSessions = async () => {
-    const { data, error } = await supabase
-      .from('attendance_sessions')
-      .select(`
-        *,
-        sections(
-          section_code,
-          year,
-          semester,
-          day_of_week,
-          start_time,
-          end_time,
-          location,
-          courses(code, title)
-        )
-      `)
-      .order('session_date', { ascending: false })
-
-    if (error) throw error
-    setSessionList(data || [])
-    setFilteredSessions(data || [])
+    const response = await fetch(`${API_BASE_URL}/api/attendance/sessions`)
+    if (!response.ok) throw new Error('Failed to fetch sessions')
+    
+    const data = await response.json()
+    
+    // Transform backend data to match frontend expectations
+    const transformedData = data.map(session => ({
+      id: session.id,
+      section_id: session.sectionId,
+      session_date: session.sessionDate,
+      scheduled_start_time: session.scheduledStartTime,
+      scheduled_end_time: session.scheduledEndTime,
+      status: session.status,
+      notes: session.notes,
+      sections: session.section ? {
+        section_code: session.section.sectionCode,
+        year: session.section.year,
+        semester: session.section.semester,
+        day_of_week: session.section.dayOfWeek,
+        start_time: session.section.startTime,
+        end_time: session.section.endTime,
+        location: session.section.location,
+        courses: session.section.course ? {
+          code: session.section.course.code,
+          title: session.section.course.title
+        } : null
+      } : null
+    }))
+    
+    // Sort by session date descending
+    transformedData.sort((a, b) => new Date(b.session_date) - new Date(a.session_date))
+    
+    setSessionList(transformedData)
+    setFilteredSessions(transformedData)
   }
 
   const saveSession = async () => {
     try {
+      // Validate session date matches section's academic year
+      if (sessionForm.section_id && sessionForm.session_date) {
+        const selectedSection = sectionList.find(s => s.id === parseInt(sessionForm.section_id))
+        if (selectedSection) {
+          const sessionYear = new Date(sessionForm.session_date).getFullYear()
+          const sectionYear = selectedSection.year
+          
+          // Allow sessions within 1 year of the section's academic year
+          // e.g., Section 2025 can have sessions from 2024-2026
+          if (Math.abs(sessionYear - sectionYear) > 1) {
+            alert(`Session date year (${sessionYear}) does not match section's academic year (${sectionYear}).\n\nPlease ensure the session date is within the correct academic year.`)
+            return
+          }
+        }
+      }
+
+      // Transform frontend form to backend DTO format
+      const requestBody = {
+        sectionId: parseInt(sessionForm.section_id),
+        sessionDate: sessionForm.session_date,
+        scheduledStartTime: sessionForm.scheduled_start_time,
+        scheduledEndTime: sessionForm.scheduled_end_time,
+        status: sessionForm.status,
+        notes: sessionForm.notes || null
+      }
+
+      let response
       if (editingSession) {
-        const { error } = await supabase
-          .from('attendance_sessions')
-          .update(sessionForm)
-          .eq('id', editingSession.id)
-        if (error) throw error
+        response = await fetch(`${API_BASE_URL}/api/attendance/sessions/${editingSession.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        })
       } else {
-        const { error } = await supabase
-          .from('attendance_sessions')
-          .insert([sessionForm])
-        if (error) throw error
+        response = await fetch(`${API_BASE_URL}/api/attendance/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        })
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save session')
       }
 
       await fetchSessions()
@@ -277,34 +336,42 @@ function Attendance() {
 
   const fetchStudentsAndRecords = async (sessionId, sectionId) => {
     try {
-      // Fetch enrolled students
-      const { data: enrollments, error: enrollError } = await supabase
-        .from('section_enrollments')
-        .select(`
-          user_id,
-          users(id, email, first_name, last_name)
-        `)
-        .eq('section_id', sectionId)
-        .eq('is_active', true)
-
-      if (enrollError) throw enrollError
-
-      const studentList = enrollments.map(e => e.users)
+      // Fetch enrolled students via backend API
+      const studentsResponse = await fetch(`${API_BASE_URL}/api/students`)
+      if (!studentsResponse.ok) throw new Error('Failed to fetch students')
+      
+      const allStudents = await studentsResponse.json()
+      
+      // Filter for students enrolled in this section
+      const studentList = allStudents
+        .filter(student => student.enrollments?.some(e => e.sectionId === sectionId && e.isActive))
+        .map(student => ({
+          id: student.id,
+          email: student.email,
+          first_name: student.firstName,
+          last_name: student.lastName
+        }))
       setStudents(studentList)
       setFilteredStudents(studentList)
 
-      // Fetch existing attendance records
-      const { data: records, error: recordError} = await supabase
-        .from('attendance_records')
-        .select('*')
-        .eq('session_id', sessionId)
+      // Fetch existing attendance records from backend API
+      const recordsResponse = await fetch(`${API_BASE_URL}/api/attendance/sessions/${sessionId}/records`)
+      if (!recordsResponse.ok) throw new Error('Failed to fetch attendance records')
+      
+      const records = await recordsResponse.json()
 
-      if (recordError) throw recordError
-
-      // Convert to map for easy lookup
+      // Convert to map for easy lookup (transform backend format to frontend format)
       const recordsMap = {}
       records.forEach(record => {
-        recordsMap[record.user_id] = record
+        recordsMap[record.userId] = {
+          id: record.id,
+          user_id: record.userId,
+          session_id: record.sessionId,
+          status: record.status,
+          checkin_time: record.checkinTime,
+          checkout_time: record.checkoutTime,
+          notes: record.notes
+        }
       })
       setAttendanceRecords(recordsMap)
 
@@ -316,29 +383,26 @@ function Attendance() {
 
   const markAttendance = async (userId, status, notes = '', checkinTime = null) => {
     try {
-      const existingRecord = attendanceRecords[userId]
-
-      const recordData = {
-        session_id: selectedSession.id,
-        user_id: userId,
+      const requestBody = {
+        sessionId: selectedSession.id,
+        userId: userId,
         status: status,
-        checkin_time: checkinTime || (status === 'PRESENT' || status === 'LATE' ? new Date().toISOString() : null),
+        checkinTime: checkinTime || (status === 'PRESENT' || status === 'LATE' ? new Date().toISOString() : null),
         notes: notes || null
       }
 
-      let result
-      if (existingRecord) {
-        result = await supabase
-          .from('attendance_records')
-          .update(recordData)
-          .eq('id', existingRecord.id)
-      } else {
-        result = await supabase
-          .from('attendance_records')
-          .insert([recordData])
+      const response = await fetch(`${API_BASE_URL}/api/attendance/records`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to mark attendance')
       }
 
-      if (result.error) throw result.error
+      const savedRecord = await response.json()
 
       await fetchStudentsAndRecords(selectedSession.id, selectedSession.section_id)
     } catch (error) {

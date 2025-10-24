@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabase'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+
 function Classes() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('courses')
@@ -213,13 +215,27 @@ function Classes() {
   }
 
   const fetchCourses = async () => {
-    const { data, error } = await supabase
-      .from('courses')
-      .select('*')
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/courses`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch courses')
+      }
+      const data = await response.json()
 
-    if (error) throw error
-    setCourseList(data || [])
-    setFilteredCourses(data || [])
+      // Transform backend data
+      const transformedCourses = data.map(course => ({
+        id: course.id,
+        code: course.code,
+        title: course.title,
+        description: course.description
+      }))
+
+      setCourseList(transformedCourses)
+      setFilteredCourses(transformedCourses)
+    } catch (error) {
+      console.error('Error fetching courses:', error)
+      throw error
+    }
   }
 
   
@@ -236,7 +252,6 @@ function Classes() {
 
   const saveCourse = async () => {
     try {
-      // Only include fields that exist in the database schema
       const courseData = {
         code: courseForm.code,
         title: courseForm.title,
@@ -244,16 +259,19 @@ function Classes() {
       }
 
       if (editingCourse) {
-        const { error } = await supabase
-          .from('courses')
-          .update(courseData)
-          .eq('id', editingCourse.id)
-        if (error) throw error
+        const response = await fetch(`${API_BASE_URL}/api/courses/${editingCourse.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(courseData)
+        })
+        if (!response.ok) throw new Error('Failed to update course')
       } else {
-        const { error } = await supabase
-          .from('courses')
-          .insert(courseData)
-        if (error) throw error
+        const response = await fetch(`${API_BASE_URL}/api/courses`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(courseData)
+        })
+        if (!response.ok) throw new Error('Failed to create course')
       }
 
       await fetchCourses()
@@ -270,12 +288,10 @@ function Classes() {
     if (!confirm('Are you sure you want to delete this course?')) return
 
     try {
-      const { error } = await supabase
-        .from('courses')
-        .delete()
-        .eq('id', courseId)
-
-      if (error) throw error
+      const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}`, {
+        method: 'DELETE'
+      })
+      if (!response.ok) throw new Error('Failed to delete course')
 
       await fetchCourses()
     } catch (error) {
@@ -304,16 +320,39 @@ function Classes() {
 
   // Sections Functions
   const fetchSections = async () => {
-    const { data, error } = await supabase
-      .from('sections')
-      .select(`
-        *,
-        courses(*)
-      `)
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/sections`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch sections')
+      }
+      const data = await response.json()
 
-    if (error) throw error
-    setSectionList(data || [])
-    setFilteredSections(data || [])
+      // Transform backend data
+      const transformedSections = data.map(section => ({
+        id: section.id,
+        section_code: section.sectionCode,
+        course_id: section.courseId,
+        year: section.year,
+        semester: section.semester,
+        day_of_week: section.meetingDay,
+        start_time: section.startTime,
+        end_time: section.endTime,
+        location: section.location,
+        schedule: `${section.meetingDay?.substring(0, 3) || ''} ${section.startTime || ''}-${section.endTime || ''}`,
+        courses: section.course ? {
+          id: section.course.id,
+          code: section.course.code,
+          title: section.course.title,
+          description: section.course.description
+        } : null
+      }))
+
+      setSectionList(transformedSections)
+      setFilteredSections(transformedSections)
+    } catch (error) {
+      console.error('Error fetching sections:', error)
+      throw error
+    }
   }
 
   // Auto-generate section code based on course, year, and semester
@@ -357,48 +396,31 @@ function Classes() {
 
   const saveSection = async () => {
     try {
-      // Generate formatted schedule string from detailed inputs
-      const dayAbbr = sectionForm.day_of_week ? sectionForm.day_of_week.substring(0, 3) : ''
-      const formattedSchedule = `${dayAbbr} ${sectionForm.start_time}-${sectionForm.end_time}`
-
-      // Prepare section data for database
       const sectionData = {
-        course_id: sectionForm.course_id,
-        section_code: sectionForm.section_code,
-        year: sectionForm.year,
-        semester: sectionForm.semester,
-        schedule: formattedSchedule, // Legacy format for backward compatibility
-        // New detailed fields (if they exist in database)
-        day_of_week: sectionForm.day_of_week,
-        start_time: sectionForm.start_time,
-        end_time: sectionForm.end_time,
+        courseId: parseInt(sectionForm.course_id),
+        sectionCode: sectionForm.section_code,
+        year: parseInt(sectionForm.year),
+        semester: parseInt(sectionForm.semester),
+        meetingDay: sectionForm.day_of_week,
+        startTime: sectionForm.start_time,
+        endTime: sectionForm.end_time,
         location: sectionForm.location
       }
 
-      // Only include new fields if they exist in database schema
-      const dbData = {
-        course_id: sectionData.course_id,
-        section_code: sectionData.section_code,
-        year: sectionData.year,
-        semester: sectionData.semester,
-        day_of_week: sectionData.day_of_week,
-        start_time: sectionData.start_time,
-        end_time: sectionData.end_time,
-        schedule: sectionData.schedule,
-        location: sectionData.location
-      }
-
       if (editingSection) {
-        const { error } = await supabase
-          .from('sections')
-          .update(dbData)
-          .eq('id', editingSection.id)
-        if (error) throw error
+        const response = await fetch(`${API_BASE_URL}/api/sections/${editingSection.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sectionData)
+        })
+        if (!response.ok) throw new Error('Failed to update section')
       } else {
-        const { error } = await supabase
-          .from('sections')
-          .insert(dbData)
-        if (error) throw error
+        const response = await fetch(`${API_BASE_URL}/api/sections`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sectionData)
+        })
+        if (!response.ok) throw new Error('Failed to create section')
       }
 
       await fetchSections()
@@ -415,12 +437,10 @@ function Classes() {
     if (!confirm('Are you sure you want to delete this section?')) return
 
     try {
-      const { error } = await supabase
-        .from('sections')
-        .delete()
-        .eq('id', sectionId)
-
-      if (error) throw error
+      const response = await fetch(`${API_BASE_URL}/api/sections/${sectionId}`, {
+        method: 'DELETE'
+      })
+      if (!response.ok) throw new Error('Failed to delete section')
 
       await fetchSections()
     } catch (error) {

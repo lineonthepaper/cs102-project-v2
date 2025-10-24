@@ -2,14 +2,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabase'
 
-// Simple password hashing function
-const hashPassword = async (password) => {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-}
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 
 function Students() {
   const navigate = useNavigate()
@@ -76,125 +69,73 @@ function Students() {
 
   const fetchStudents = async () => {
     try {
-      const { data: studentsData, error: studentsError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('is_student', true)
+      const response = await fetch(`${API_BASE_URL}/api/students`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch students')
+      }
 
-      if (studentsError) throw studentsError
+      const studentsData = await response.json()
 
-      // Fetch attendance records and enrollments for each student
-      const studentsWithAttendance = await Promise.all(
-        studentsData.map(async (student) => {
-          const rawId = student.id != null ? student.id.toString() : ''
-          const normalizedId = (() => {
-            if (!rawId) return ''
-            if (/^[A-Z]\d{7}$/.test(rawId)) return rawId
-            if (/^\d+$/.test(rawId)) {
-              if (student.is_student) {
-                return `S${rawId.padStart(7, '0')}`
-              }
-              if (student.is_instructor) {
-                return `I${rawId.padStart(7, '0')}`
-              }
-            }
-            return rawId
-          })()
-          const identifierCandidates = Array.from(
-            new Set([rawId, normalizedId].filter(Boolean))
-          )
+      // Transform Java DTO to match frontend expectations
+      const transformedStudents = studentsData.map(student => ({
+        ...student,
+        id: student.id,
+        displayId: student.displayId,
+        first_name: student.firstName,
+        last_name: student.lastName,
+        email: student.email,
+        enabled: student.enabled,
+        totalSessions: student.totalSessions,
+        presentSessions: student.presentSessions,
+        lateSessions: student.lateSessions,
+        attendanceRate: student.attendanceRate,
+        punctualityRate: student.punctualityRate,
+        attendanceRecords: (student.attendanceRecords || []).map(record => ({
+          ...record,
+          user_id: record.userId,
+          session_id: record.sessionId,
+          status: record.status,
+          checkin_time: record.checkinTime,
+          checkout_time: record.checkoutTime,
+          attendance_sessions: record.attendanceSession ? {
+            session_date: record.attendanceSession.sessionDate,
+            sections: record.attendanceSession.section ? {
+              id: record.attendanceSession.section.id,
+              section_code: record.attendanceSession.section.sectionCode,
+              courses: record.attendanceSession.section.course ? {
+                id: record.attendanceSession.section.course.id,
+                code: record.attendanceSession.section.course.code
+              } : null
+            } : null
+          } : null
+        })),
+        enrollments: (student.enrollments || []).map(enrollment => ({
+          ...enrollment,
+          user_id: enrollment.userId,
+          section_id: enrollment.sectionId,
+          is_active: enrollment.isActive,
+          enrolled_at: enrollment.enrolledAt,
+          sections: enrollment.section ? {
+            id: enrollment.section.id,
+            section_code: enrollment.section.sectionCode,
+            year: enrollment.section.year,
+            semester: enrollment.section.semester,
+            meeting_day: enrollment.section.meetingDay,
+            start_time: enrollment.section.startTime,
+            end_time: enrollment.section.endTime,
+            location: enrollment.section.location,
+            courses: enrollment.section.course ? {
+              id: enrollment.section.course.id,
+              code: enrollment.section.course.code
+            } : null
+          } : null
+        }))
+      }))
 
-          // Fetch attendance records
-          let attendanceQuery = supabase
-            .from('attendance_records')
-            .select(`
-              *,
-              attendance_sessions!inner (
-                session_date,
-                sections!inner (
-                  id,
-                  section_code,
-                  courses!inner (
-                    id,
-                    code
-                  )
-                )
-              )
-            `)
-
-          if (identifierCandidates.length === 1) {
-            attendanceQuery = attendanceQuery.eq('user_id', identifierCandidates[0])
-          } else if (identifierCandidates.length > 1) {
-            attendanceQuery = attendanceQuery.in('user_id', identifierCandidates)
-          }
-
-          const { data: attendanceData, error: attendanceError } = await attendanceQuery
-
-          if (attendanceError) {
-            throw attendanceError
-          }
-
-          // Fetch enrollments
-          let enrollmentQuery = supabase
-            .from('section_enrollments')
-            .select(`
-              *,
-              sections!inner (
-                id,
-                section_code,
-                year,
-                semester,
-                meeting_day,
-                start_time,
-                end_time,
-                location,
-                courses!inner (
-                  id,
-                  code
-                )
-              )
-            `)
-            .eq('is_active', true)
-
-          if (identifierCandidates.length === 1) {
-            enrollmentQuery = enrollmentQuery.eq('user_id', identifierCandidates[0])
-          } else if (identifierCandidates.length > 1) {
-            enrollmentQuery = enrollmentQuery.in('user_id', identifierCandidates)
-          }
-
-          const { data: enrollmentData, error: enrollmentError } = await enrollmentQuery
-
-          if (enrollmentError) {
-            throw enrollmentError
-          }
-
-          const totalSessions = attendanceData?.length || 0
-          const lateSessions = attendanceData?.filter(record => record.status === 'LATE').length || 0
-          const presentSessions = attendanceData?.filter(record =>
-            record.status === 'PRESENT' || record.status === 'LATE'
-          ).length || 0
-          const attendanceRate = totalSessions > 0 ? Math.round((presentSessions / totalSessions) * 100) : 0
-
-          // Calculate punctuality based on LATE arrivals
-          const punctualityRate = totalSessions > 0 ? Math.round((lateSessions / totalSessions) * 100) : 0
-
-          return {
-            ...student,
-            displayId: normalizedId || rawId,
-            attendanceRecords: attendanceData || [],
-            enrollments: enrollmentData || [],
-            totalSessions,
-            presentSessions,
-            lateSessions,
-            attendanceRate,
-            punctualityRate
-          }
-        })
-      )
-
-      setStudents(studentsWithAttendance)
+      setStudents(transformedStudents)
     } catch (error) {
       console.error('Error fetching students:', error)
+      alert('Failed to fetch students from server')
     } finally {
       setLoading(false)
     }
@@ -567,61 +508,21 @@ function Students() {
 
     try {
       const studentId = manageEnrollmentStudent.id
-      const selectedSectionIds = new Set(
-        Object.values(enrollmentSelections).filter((value) => value)
-      )
-      const currentEnrollments = manageEnrollmentStudent.enrollments || []
-      const currentActiveSectionIds = new Set(currentEnrollments.map(enrollment => enrollment.section_id))
+      const selectedSectionIds = Object.values(enrollmentSelections).filter((value) => value)
 
-      const enrollmentsToDeactivate = currentEnrollments.filter(
-        (enrollment) => !selectedSectionIds.has(enrollment.section_id)
-      )
+      const response = await fetch(`${API_BASE_URL}/api/students/${studentId}/enrollments`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          sectionIds: selectedSectionIds
+        })
+      })
 
-      if (enrollmentsToDeactivate.length > 0) {
-        const { error: deactivateError } = await supabase
-          .from('section_enrollments')
-          .update({ is_active: false })
-          .in('id', enrollmentsToDeactivate.map(enrollment => enrollment.id))
-
-        if (deactivateError) throw deactivateError
-      }
-
-      const sectionsToActivate = Array.from(selectedSectionIds).filter(
-        (sectionId) => !currentActiveSectionIds.has(sectionId)
-      )
-
-      for (const sectionId of sectionsToActivate) {
-        const { data: existingRecord, error: fetchExistingError } = await supabase
-          .from('section_enrollments')
-          .select('id, is_active')
-          .eq('user_id', studentId)
-          .eq('section_id', sectionId)
-          .limit(1)
-          .maybeSingle()
-
-        if (fetchExistingError && fetchExistingError.code !== 'PGRST116') {
-          throw fetchExistingError
-        }
-
-        if (existingRecord && !existingRecord.is_active) {
-          const { error: reactivateError } = await supabase
-            .from('section_enrollments')
-            .update({ is_active: true })
-            .eq('id', existingRecord.id)
-
-          if (reactivateError) throw reactivateError
-        } else if (!existingRecord) {
-          const { error: insertError } = await supabase
-            .from('section_enrollments')
-            .insert({
-              user_id: studentId,
-              section_id: sectionId,
-              is_active: true,
-              enrolled_at: new Date().toISOString()
-            })
-
-          if (insertError) throw insertError
-        }
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Failed to update enrollments')
       }
 
       await fetchStudents()
@@ -1030,45 +931,24 @@ function Students() {
                 }
 
                 try {
-                  // Check for existing user with this email
-                  const { data: existingUser, error: checkError } = await supabase
-                    .from('users')
-                    .select('email')
-                    .eq('email', studentData.email)
-                    .single()
+                  const response = await fetch(`${API_BASE_URL}/api/students`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(studentData)
+                  })
 
-                  if (checkError && checkError.code !== 'PGRST116') {
-                    throw checkError
-                  }
+                  const result = await response.json()
 
-                  if (existingUser) {
-                    throw new Error('A student with this email address already exists in the system.')
-                  }
-
-                  // Create student record in database (database trigger will auto-generate IDs like S0000001)
-                  const { error: userError } = await supabase
-                    .from('users')
-                    .insert({
-                      email: studentData.email,
-                      first_name: studentData.firstName,
-                      last_name: studentData.lastName,
-                      is_student: true,
-                      is_ta: false,
-                      is_instructor: false,
-                      enabled: true,
-                      created_at: new Date().toISOString()
-                    })
-                    .select() // Return the created record to see the generated ID
-                    .single()
-
-                  if (userError) {
-                    throw new Error(`Failed to create student record: ${userError.message}`)
+                  if (!response.ok) {
+                    throw new Error(result.message || 'Failed to add student')
                   }
 
                   // Refresh students list
                   await fetchStudents()
                   closeAddStudentModal()
-                  alert('Student added successfully!')
+                  alert(result.message || 'Student added successfully!')
                 } catch (error) {
                   console.error('Error adding student:', error)
                   alert(error.message || 'Failed to add student')
