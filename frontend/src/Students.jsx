@@ -923,6 +923,12 @@ function Students() {
             <div className="add-student-form">
               <form onSubmit={async (e) => {
                 e.preventDefault()
+                
+                // Prevent double submission
+                const submitButton = e.target.querySelector('button[type="submit"]')
+                if (submitButton.disabled) return
+                submitButton.disabled = true
+                
                 const formData = new FormData(e.target)
                 const studentData = {
                   email: formData.get('email'),
@@ -952,6 +958,9 @@ function Students() {
                 } catch (error) {
                   console.error('Error adding student:', error)
                   alert(error.message || 'Failed to add student')
+                } finally {
+                  // Re-enable submit button in case of error
+                  if (submitButton) submitButton.disabled = false
                 }
               }}>
                 <div className="form-group">
