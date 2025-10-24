@@ -97,8 +97,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = async () => {
+    // Clear localStorage tokens
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
+    
+    // Sign out from Supabase to clear session
+    await supabase.auth.signOut()
+    
+    // Clear user state
     setUser(null)
   }
 
