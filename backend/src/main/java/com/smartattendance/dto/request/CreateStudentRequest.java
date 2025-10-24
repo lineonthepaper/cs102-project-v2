@@ -24,13 +24,13 @@ public class CreateStudentRequest {
     @NotBlank(message = "First name is required")
     @Size(min = ValidationConstants.NAME_MIN_LENGTH, 
           max = ValidationConstants.NAME_MAX_LENGTH, 
-          message = "First name must be between 2 and 50 characters")
+          message = "First name must be between 1 and 50 characters")
     private String firstName;
     
     @NotBlank(message = "Last name is required")
     @Size(min = ValidationConstants.NAME_MIN_LENGTH, 
           max = ValidationConstants.NAME_MAX_LENGTH, 
-          message = "Last name must be between 2 and 50 characters")
+          message = "Last name must be between 1 and 50 characters")
     private String lastName;
 }
 

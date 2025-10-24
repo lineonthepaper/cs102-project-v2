@@ -7,9 +7,9 @@ package com.smartattendance.util;
 public class ValidationConstants {
     
     // User/Person Name Validation
-    public static final int NAME_MIN_LENGTH = 2;
+    public static final int NAME_MIN_LENGTH = 1;
     public static final int NAME_MAX_LENGTH = 50;
-    public static final String NAME_MIN_MESSAGE = "Name must be at least " + NAME_MIN_LENGTH + " characters";
+    public static final String NAME_MIN_MESSAGE = "Name must be at least " + NAME_MIN_LENGTH + " character";
     public static final String NAME_MAX_MESSAGE = "Name must not exceed " + NAME_MAX_LENGTH + " characters";
     
     // Email Validation
