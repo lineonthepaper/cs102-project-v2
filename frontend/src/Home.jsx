@@ -19,16 +19,16 @@ function Home() {
             .maybeSingle()
 
           if (data && !error) {
-            // Priority: Instructor > Teaching Assistant > Student
+            // Priority: Instructor > Teaching Assistant > Student > Admin
             if (data.is_instructor) setUserRole('Instructor')
             else if (data.is_ta) setUserRole('Teaching Assistant')
             else if (data.is_student) setUserRole('Student')
-            else setUserRole('User') // No role assigned
+            else setUserRole('Admin') // System administrator (not instructor/TA/student)
           } else if (!data) {
             // User not in database - treat as Admin for authenticated system users
             setUserRole('Admin')
           } else {
-            setUserRole('User')
+            setUserRole('Admin')
           }
         } catch (err) {
           console.error('Error fetching user role:', err)
