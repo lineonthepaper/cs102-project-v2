@@ -52,9 +52,15 @@ public class User {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    public String getRole() {
-        if (isInstructor) return "INSTRUCTOR";
-        if (isTA) return "TA";
-        return "STUDENT";
+    /**
+     * Determines the user's primary role based on their role flags.
+     * Priority: INSTRUCTOR > TA > STUDENT
+     * 
+     * @return the user's primary role
+     */
+    public UserRole getRole() {
+        if (isInstructor) return UserRole.INSTRUCTOR;
+        if (isTA) return UserRole.TA;
+        return UserRole.STUDENT;
     }
 }
