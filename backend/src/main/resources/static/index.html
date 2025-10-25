@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Capture</title>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        video, canvas {
+            width: 320px;
+            height: 240px;
+            border: 1px solid black;
+            display: block;
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 10px 20px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Camera Captuuuuure</h2>
+    <button id="start">Start Video</button>
+    <button id="end">End Video</button>
+    <video id="video" autoplay></video>
+    <p>captures photo every 2.5s</p>
+    <canvas id="canvas"></canvas>
+    <div id="faces"></div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const captureButton = document.getElementById('capture');
+        const startButton = document.getElementById('start');
+        const endButton = document.getElementById('end');
+        var videoStream = null;
+        const faces = document.getElementById('faces');
+
+        function canvasImageToBlob(canvas, type = "image/png", quality = 1.0) {
+            return new Promise(resolve => {
+                canvas.toBlob(blob => resolve(blob), type, quality);
+            });
+        }
+
+        async function captureAndSend() {
+            if(videoStream){
+                // draw frame
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                // wait for blob
+                const blob = await canvasImageToBlob(canvas, "image/png");
+
+                // prepare form data
+                const formData = new FormData();
+                formData.append("image", blob);
+
+                // send
+                try {
+                    const response = await axios.post("http://localhost:8080/", formData);
+                    console.log("Upload success", response.data);
+                    const p = document.createElement('p');
+                    p.innerText = JSON.stringify(response.data);
+                    faces.appendChild(p);
+                    
+                } catch (err) {
+                    console.error("Upload failed", err);
+                }
+            }
+            
+        }
+        // starts camera
+        startButton.addEventListener('click', () => {
+            if(!videoStream){
+                navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    video.srcObject = stream;
+                    videoStream = stream;
+                })
+                .catch(err => {
+                    console.error('Error accessing camera: ', err);
+                });
+            }
+        });
+        
+        endButton.addEventListener('click', () => {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                videoStream = null;
+            }
+        });
+
+        // takes picture every 3s if video is on
+        const context = canvas.getContext('2d');
+
+        const interval = setInterval(captureAndSend, 1000);
+
+        // clearInterval(interval); // optional, use when necessary
+    </script>
+</body>
+</html>

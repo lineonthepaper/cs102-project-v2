@@ -7,6 +7,12 @@ Face recognition-based attendance system with Java Spring Boot backend and React
 - Java 21
 - Node.js 18+
 - Supabase account
+- [OpenCV 4.12.0](https://opencv.org/releases/)
+- [SFace](https://github.com/opencv/opencv_zoo/blob/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx)
+
+## Pre Setup
+- Download the OpenCV native library based on your OS from the link above. Extract the opencv_java4xx.dll and place it under backend/src/main/resources/native/
+- Download the SFace model from the link above and place it under backend/src/main/resources/models 
 
 ## Setup
 

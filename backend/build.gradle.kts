@@ -42,6 +42,9 @@ dependencies {
     testCompileOnly("org.projectlombok:lombok:1.18.34")
     testAnnotationProcessor("org.projectlombok:lombok:1.18.34")
     testAnnotationProcessor("org.mapstruct:mapstruct-processor:1.5.5.Final")
+
+    // external OpenCV library
+    implementation(files("lib/opencv-4120.jar"))
 }
 
 tasks.withType<Test> {
