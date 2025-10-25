@@ -62,18 +62,18 @@ public class StudentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @PutMapping("/{studentId}/enrollments")
+    @PutMapping("/{id}/enrollments")
     public ResponseEntity<Map<String, Object>> updateEnrollments(
-            @PathVariable String studentId,
+            @PathVariable String id,
             @Valid @RequestBody UpdateEnrollmentRequest request) {
-        logger.info("Updating enrollments for student: {}", studentId);
-        studentService.updateEnrollments(studentId, request);
+        logger.info("Updating enrollments for student: {}", id);
+        studentService.updateEnrollments(id, request);
         
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("message", "Enrollments updated successfully");
         
-        logger.info("Enrollments updated successfully for student: {}", studentId);
+        logger.info("Enrollments updated successfully for student: {}", id);
         return ResponseEntity.ok(response);
     }
 }

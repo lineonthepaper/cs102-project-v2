@@ -12,15 +12,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
-/**
- * REST controller for Course management.
- * 
- * FIXED: Removed try-catch blocks (SRP violation)
- * - Controllers should only handle HTTP concerns
- * - Error handling delegated to GlobalExceptionHandler
- * - Added proper logging with SLF4J
- * - Added @Valid annotations for input validation
- */
 @RestController
 @RequestMapping("/api/courses")
 @CrossOrigin(origins = "http://localhost:5173")
@@ -47,7 +38,6 @@ public class CourseController {
         CourseDTO createdCourse = courseService.createCourse(courseDTO);
         logger.info("Course created successfully with ID: {}", createdCourse.getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(createdCourse);
-        // Let GlobalExceptionHandler handle exceptions! ✓
     }
 
     @PutMapping("/{id}")
@@ -56,7 +46,6 @@ public class CourseController {
         CourseDTO updatedCourse = courseService.updateCourse(id, courseDTO);
         logger.info("Course updated successfully: {}", id);
         return ResponseEntity.ok(updatedCourse);
-        // Let GlobalExceptionHandler handle exceptions! ✓
     }
 
     @DeleteMapping("/{id}")
@@ -65,7 +54,6 @@ public class CourseController {
         courseService.deleteCourse(id);
         logger.info("Course deleted successfully: {}", id);
         return ResponseEntity.ok(Map.of("message", "Course deleted successfully"));
-        // Let GlobalExceptionHandler handle exceptions! ✓
     }
 }
 

@@ -42,10 +42,10 @@ public class InstructorController {
         }
     }
 
-    @DeleteMapping("/{userId}")
-    public ResponseEntity<Map<String, String>> removeInstructor(@PathVariable String userId) {
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Map<String, String>> removeInstructor(@PathVariable String id) {
         try {
-            instructorService.removeInstructor(userId);
+            instructorService.removeInstructor(id);
             return ResponseEntity.ok(Map.of("message", "Instructor removed successfully."));
         } catch (RuntimeException e) {
             System.err.println("Error removing instructor: " + e.getMessage());
@@ -55,12 +55,12 @@ public class InstructorController {
         }
     }
 
-    @PutMapping("/{userId}/assignments")
+    @PutMapping("/{id}/assignments")
     public ResponseEntity<Map<String, String>> updateInstructorAssignments(
-            @PathVariable String userId,
+            @PathVariable String id,
             @RequestBody UpdateInstructorAssignmentsRequest request) {
         try {
-            instructorService.updateInstructorAssignments(userId, request);
+            instructorService.updateInstructorAssignments(id, request);
             return ResponseEntity.ok(Map.of("message", "Instructor assignments updated successfully."));
         } catch (RuntimeException e) {
             System.err.println("Error updating instructor assignments: " + e.getMessage());

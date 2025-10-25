@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/attendance")
@@ -35,7 +36,7 @@ public class AttendanceController {
             return ResponseEntity.status(HttpStatus.CREATED).body(session);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(java.util.Map.of("error", e.getMessage()));
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 
@@ -48,14 +49,14 @@ public class AttendanceController {
             return ResponseEntity.ok(session);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(java.util.Map.of("error", e.getMessage()));
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 
-    @GetMapping("/sessions/{sessionId}/records")
+    @GetMapping("/sessions/{id}/records")
     public ResponseEntity<List<AttendanceRecordResponseDTO>> getSessionRecords(
-            @PathVariable Long sessionId) {
-        List<AttendanceRecordResponseDTO> records = attendanceService.getSessionRecords(sessionId);
+            @PathVariable Long id) {
+        List<AttendanceRecordResponseDTO> records = attendanceService.getSessionRecords(id);
         return ResponseEntity.ok(records);
     }
 
@@ -66,7 +67,7 @@ public class AttendanceController {
             return ResponseEntity.ok(record);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(java.util.Map.of("error", e.getMessage()));
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 }

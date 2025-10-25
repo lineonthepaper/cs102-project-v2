@@ -13,15 +13,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
-/**
- * REST controller for Section management.
- * 
- * FIXED: Removed try-catch blocks (SRP violation)
- * - Controllers should only handle HTTP concerns
- * - Error handling delegated to GlobalExceptionHandler
- * - Added proper logging with SLF4J
- * - Added @Valid annotations for input validation
- */
 @RestController
 @RequestMapping("/api/sections")
 @CrossOrigin(origins = "http://localhost:5173")
@@ -48,7 +39,6 @@ public class SectionController {
         SectionDTO createdSection = sectionService.createSection(sectionDTO);
         logger.info("Section created successfully with ID: {}", createdSection.getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(createdSection);
-        // GlobalExceptionHandler handles exceptions ✓
     }
 
     @PutMapping("/{id}")
@@ -57,7 +47,6 @@ public class SectionController {
         SectionDTO updatedSection = sectionService.updateSection(id, sectionDTO);
         logger.info("Section updated successfully: {}", id);
         return ResponseEntity.ok(updatedSection);
-        // GlobalExceptionHandler handles exceptions ✓
     }
 
     @DeleteMapping("/{id}")
@@ -66,7 +55,6 @@ public class SectionController {
         sectionService.deleteSection(id);
         logger.info("Section deleted successfully: {}", id);
         return ResponseEntity.ok(Map.of("message", "Section deleted successfully"));
-        // GlobalExceptionHandler handles exceptions ✓
     }
 
     @GetMapping("/{id}/students")
@@ -75,7 +63,6 @@ public class SectionController {
         List<StudentDTO> students = sectionService.getStudentsBySection(id);
         logger.info("Retrieved {} students for section {}", students.size(), id);
         return ResponseEntity.ok(students);
-        // GlobalExceptionHandler handles exceptions ✓
     }
 }
 
