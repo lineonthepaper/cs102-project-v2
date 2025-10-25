@@ -44,3 +44,6 @@ supabase/.temp/
 
 # Archive/diagnostic files
 scripts/archive/
+
+# java built classes
+*.class
