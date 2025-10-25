@@ -30,44 +30,23 @@ public class TAController {
 
     @PostMapping
     public ResponseEntity<Map<String, String>> addTA(@RequestBody AddTARequest request) {
-        try {
-            TADTO newTA = taService.addTA(request);
-            return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(Map.of("message", "Teaching Assistant created successfully.", "id", newTA.getId()));
-        } catch (RuntimeException e) {
-            System.err.println("Error adding TA: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
-        }
+        TADTO newTA = taService.addTA(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(Map.of("message", "Teaching Assistant created successfully.", "id", newTA.getId()));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, String>> removeTA(@PathVariable String id) {
-        try {
-            taService.removeTA(id);
-            return ResponseEntity.ok(Map.of("message", "Teaching Assistant removed successfully."));
-        } catch (RuntimeException e) {
-            System.err.println("Error removing TA: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
-        }
+        taService.removeTA(id);
+        return ResponseEntity.ok(Map.of("message", "Teaching Assistant removed successfully."));
     }
 
     @PutMapping("/{id}/assignments")
     public ResponseEntity<Map<String, String>> updateTAAssignments(
             @PathVariable String id,
             @RequestBody UpdateTAAssignmentsRequest request) {
-        try {
-            taService.updateTAAssignments(id, request);
-            return ResponseEntity.ok(Map.of("message", "TA assignments updated successfully."));
-        } catch (RuntimeException e) {
-            System.err.println("Error updating TA assignments: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
-        }
+        taService.updateTAAssignments(id, request);
+        return ResponseEntity.ok(Map.of("message", "TA assignments updated successfully."));
     }
 }
 

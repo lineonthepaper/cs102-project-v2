@@ -69,65 +69,80 @@ public class TAService {
 
     @Transactional
     public TADTO addTA(AddTARequest request) {
-        // Find existing user by email
-        String resourceType = request.getType().equals("instructor") ? "Instructor" : "Student";
-        User existingUser = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new ResourceNotFoundException(resourceType, request.getEmail()));
-
-        // Check if already a TA
-        if (Boolean.TRUE.equals(existingUser.getIsTA())) {
-            throw new InvalidRequestException("This user is already a Teaching Assistant");
+        try {
+            // Find existing user by email
+            String resourceType = request.getType().equals("instructor") ? "Instructor" : "Student";
+            User existingUser = userRepository.findByEmail(request.getEmail())
+                    .orElseThrow(() -> new ResourceNotFoundException(resourceType, request.getEmail()));
+    
+            // Check if already a TA
+            if (Boolean.TRUE.equals(existingUser.getIsTA())) {
+                throw new InvalidRequestException("This user is already a Teaching Assistant");
+            }
+    
+            // Validate user type
+            if (request.getType().equals("instructor") && !Boolean.TRUE.equals(existingUser.getIsInstructor())) {
+                throw new InvalidRequestException("This user is not an instructor. Please check the email or select Student.");
+            }
+            if (request.getType().equals("student") && !Boolean.TRUE.equals(existingUser.getIsStudent())) {
+                throw new InvalidRequestException("This user is not a student. Please check the email or select Instructor.");
+            }
+    
+            // Note: Frontend will handle Supabase Auth creation for students
+            // Backend just updates the database record
+    
+            // Update user to be a TA
+            existingUser.setIsTA(true);
+            existingUser.setEnabled(true);
+            userRepository.save(existingUser);
+    
+            return mapToTADTO(existingUser, Collections.emptyList());
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new InvalidRequestException("TA could not be added.");
         }
-
-        // Validate user type
-        if (request.getType().equals("instructor") && !Boolean.TRUE.equals(existingUser.getIsInstructor())) {
-            throw new InvalidRequestException("This user is not an instructor. Please check the email or select Student.");
-        }
-        if (request.getType().equals("student") && !Boolean.TRUE.equals(existingUser.getIsStudent())) {
-            throw new InvalidRequestException("This user is not a student. Please check the email or select Instructor.");
-        }
-
-        // Note: Frontend will handle Supabase Auth creation for students
-        // Backend just updates the database record
-
-        // Update user to be a TA
-        existingUser.setIsTA(true);
-        existingUser.setEnabled(true);
-        userRepository.save(existingUser);
-
-        return mapToTADTO(existingUser, Collections.emptyList());
     }
 
     @Transactional
     public void removeTA(String userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("TA", userId));
-
-        // Delete all TA assignments
-        taAssignmentRepository.deleteByUserId(userId);
-
-        // Update user to remove TA status
-        user.setIsTA(false);
-        user.setEnabled(false);
-        user.setAuthId(null);
-        userRepository.save(user);
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("TA", userId));
+    
+            // Delete all TA assignments
+            taAssignmentRepository.deleteByUserId(userId);
+    
+            // Update user to remove TA status
+            user.setIsTA(false);
+            user.setEnabled(false);
+            user.setAuthId(null);
+            userRepository.save(user);
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new InvalidRequestException("TA could not be removed.");
+        }
     }
 
     @Transactional
     public void updateTAAssignments(String userId, UpdateTAAssignmentsRequest request) {
-        // Verify TA exists
-        User ta = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("TA", userId));
-
-        // Delete existing assignments
-        taAssignmentRepository.deleteByUserId(userId);
-
-        // Insert new assignments
-        if (request.getSectionIds() != null && !request.getSectionIds().isEmpty()) {
-            List<TAAssignment> newAssignments = request.getSectionIds().stream()
-                    .<TAAssignment>map(sectionId -> new TAAssignment(userId, sectionId))
-                    .collect(Collectors.toList());
-            taAssignmentRepository.saveAll(newAssignments);
+        try {
+            // Verify TA exists
+            User ta = userRepository.findById(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("TA", userId));
+    
+            // Delete existing assignments
+            taAssignmentRepository.deleteByUserId(userId);
+    
+            // Insert new assignments
+            if (request.getSectionIds() != null && !request.getSectionIds().isEmpty()) {
+                List<TAAssignment> newAssignments = request.getSectionIds().stream()
+                        .<TAAssignment>map(sectionId -> new TAAssignment(userId, sectionId))
+                        .collect(Collectors.toList());
+                taAssignmentRepository.saveAll(newAssignments);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new InvalidRequestException("TA assignments could not be updated.");
         }
     }
 

@@ -5,6 +5,7 @@ import com.smartattendance.dto.request.attendance.MarkAttendanceRequest;
 import com.smartattendance.dto.response.attendance.AttendanceRecordResponseDTO;
 import com.smartattendance.dto.response.attendance.AttendanceSessionResponseDTO;
 import com.smartattendance.entity.*;
+import com.smartattendance.exception.InvalidRequestException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
 import com.smartattendance.service.strategy.AttendanceStrategyFactory;
@@ -58,32 +59,42 @@ public class AttendanceService {
      */
     @Transactional
     public AttendanceSessionResponseDTO createSession(CreateAttendanceSessionRequest request) {
-        AttendanceSession session = new AttendanceSession();
-        session.setSectionId(request.getSectionId());
-        session.setSessionDate(LocalDate.parse(request.getSessionDate()));
-        session.setScheduledStartTime(LocalTime.parse(request.getScheduledStartTime()));
-        session.setScheduledEndTime(LocalTime.parse(request.getScheduledEndTime()));
-        session.setStatus(request.getStatus());
-        session.setNotes(request.getNotes());
-
-        AttendanceSession savedSession = sessionRepository.save(session);
-        return mapToSessionDTO(savedSession);
+        try {
+            AttendanceSession session = new AttendanceSession();
+            session.setSectionId(request.getSectionId());
+            session.setSessionDate(LocalDate.parse(request.getSessionDate()));
+            session.setScheduledStartTime(LocalTime.parse(request.getScheduledStartTime()));
+            session.setScheduledEndTime(LocalTime.parse(request.getScheduledEndTime()));
+            session.setStatus(request.getStatus());
+            session.setNotes(request.getNotes());
+    
+            AttendanceSession savedSession = sessionRepository.save(session);
+            return mapToSessionDTO(savedSession);
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new InvalidRequestException("Session could not be created.");
+        }
     }
 
     @Transactional
     public AttendanceSessionResponseDTO updateSession(Long id, CreateAttendanceSessionRequest request) {
-        AttendanceSession session = sessionRepository.findById(id)
-                .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
-
-        session.setSectionId(request.getSectionId());
-        session.setSessionDate(LocalDate.parse(request.getSessionDate()));
-        session.setScheduledStartTime(LocalTime.parse(request.getScheduledStartTime()));
-        session.setScheduledEndTime(LocalTime.parse(request.getScheduledEndTime()));
-        session.setStatus(request.getStatus());
-        session.setNotes(request.getNotes());
-
-        AttendanceSession updatedSession = sessionRepository.save(session);
-        return mapToSessionDTO(updatedSession);
+        try{
+            AttendanceSession session = sessionRepository.findById(id)
+                    .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
+    
+            session.setSectionId(request.getSectionId());
+            session.setSessionDate(LocalDate.parse(request.getSessionDate()));
+            session.setScheduledStartTime(LocalTime.parse(request.getScheduledStartTime()));
+            session.setScheduledEndTime(LocalTime.parse(request.getScheduledEndTime()));
+            session.setStatus(request.getStatus());
+            session.setNotes(request.getNotes());
+    
+            AttendanceSession updatedSession = sessionRepository.save(session);
+            return mapToSessionDTO(updatedSession);
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new InvalidRequestException("Session could not be updated.");
+        }
     }
 
     @Transactional(readOnly = true)
@@ -105,41 +116,46 @@ public class AttendanceService {
      */
     @Transactional
     public AttendanceRecordResponseDTO markAttendance(MarkAttendanceRequest request) {
-        // Check if record already exists
-        AttendanceRecord record = recordRepository
-                .findBySessionIdAndUserId(request.getSessionId(), request.getUserId())
-                .orElse(new AttendanceRecord());
-
-        record.setSessionId(request.getSessionId());
-        record.setUserId(request.getUserId());
-        record.setNotes(request.getNotes());
-
-        // Parse checkin time
-        LocalDateTime checkinTime = request.getCheckinTime() != null && !request.getCheckinTime().isEmpty()
-                ? LocalDateTime.parse(request.getCheckinTime(), DateTimeFormatter.ISO_DATE_TIME)
-                : LocalDateTime.now();
-
-        // Use Strategy Pattern - get the appropriate strategy and execute it
         try {
-            AttendanceMarkingStrategy strategy = strategyFactory.getStrategy(request.getStatus());
-            strategy.mark(record, checkinTime);
-        } catch (IllegalArgumentException e) {
-            // Fallback for unknown statuses (backwards compatibility)
-            // Convert String to AttendanceStatus
+            // Check if record already exists
+            AttendanceRecord record = recordRepository
+                    .findBySessionIdAndUserId(request.getSessionId(), request.getUserId())
+                    .orElse(new AttendanceRecord());
+    
+            record.setSessionId(request.getSessionId());
+            record.setUserId(request.getUserId());
+            record.setNotes(request.getNotes());
+    
+            // Parse checkin time
+            LocalDateTime checkinTime = request.getCheckinTime() != null && !request.getCheckinTime().isEmpty()
+                    ? LocalDateTime.parse(request.getCheckinTime(), DateTimeFormatter.ISO_DATE_TIME)
+                    : LocalDateTime.now();
+    
+            // Use Strategy Pattern - get the appropriate strategy and execute it
             try {
-                AttendanceStatus status = AttendanceStatus.fromCode(request.getStatus());
-                record.setStatus(status);
-            } catch (IllegalArgumentException ex) {
-                // If still invalid, set to null or default
-                record.setStatus(null);
+                AttendanceMarkingStrategy strategy = strategyFactory.getStrategy(request.getStatus());
+                strategy.mark(record, checkinTime);
+            } catch (IllegalArgumentException e) {
+                // Fallback for unknown statuses (backwards compatibility)
+                // Convert String to AttendanceStatus
+                try {
+                    AttendanceStatus status = AttendanceStatus.fromCode(request.getStatus());
+                    record.setStatus(status);
+                } catch (IllegalArgumentException ex) {
+                    // If still invalid, set to null or default
+                    record.setStatus(null);
+                }
+                if (request.getCheckinTime() != null && !request.getCheckinTime().isEmpty()) {
+                    record.setCheckinTime(checkinTime);
+                }
             }
-            if (request.getCheckinTime() != null && !request.getCheckinTime().isEmpty()) {
-                record.setCheckinTime(checkinTime);
-            }
+    
+            AttendanceRecord savedRecord = recordRepository.save(record);
+            return mapToRecordDTO(savedRecord);
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new InvalidRequestException("Attendance could not be marked.");
         }
-
-        AttendanceRecord savedRecord = recordRepository.save(record);
-        return mapToRecordDTO(savedRecord);
     }
 
     private AttendanceSessionResponseDTO mapToSessionDTO(AttendanceSession session) {

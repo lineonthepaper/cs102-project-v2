@@ -31,26 +31,16 @@ public class AttendanceController {
 
     @PostMapping("/sessions")
     public ResponseEntity<?> createSession(@RequestBody CreateAttendanceSessionRequest request) {
-        try {
-            AttendanceSessionResponseDTO session = attendanceService.createSession(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(session);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("error", e.getMessage()));
-        }
+        AttendanceSessionResponseDTO session = attendanceService.createSession(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(session);
     }
 
     @PutMapping("/sessions/{id}")
     public ResponseEntity<?> updateSession(
             @PathVariable Long id,
             @RequestBody CreateAttendanceSessionRequest request) {
-        try {
-            AttendanceSessionResponseDTO session = attendanceService.updateSession(id, request);
-            return ResponseEntity.ok(session);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("error", e.getMessage()));
-        }
+        AttendanceSessionResponseDTO session = attendanceService.updateSession(id, request);
+        return ResponseEntity.ok(session);
     }
 
     @GetMapping("/sessions/{id}/records")
@@ -62,13 +52,8 @@ public class AttendanceController {
 
     @PostMapping("/records")
     public ResponseEntity<?> markAttendance(@RequestBody MarkAttendanceRequest request) {
-        try {
-            AttendanceRecordResponseDTO record = attendanceService.markAttendance(request);
-            return ResponseEntity.ok(record);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("error", e.getMessage()));
-        }
+        AttendanceRecordResponseDTO record = attendanceService.markAttendance(request);
+        return ResponseEntity.ok(record);
     }
 }
 

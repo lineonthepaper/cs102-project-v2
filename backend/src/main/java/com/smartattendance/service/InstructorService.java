@@ -7,6 +7,7 @@ import com.smartattendance.dto.response.course.*;
 import com.smartattendance.dto.response.user.*;
 import com.smartattendance.dto.response.auth.*;
 import com.smartattendance.entity.*;
+import com.smartattendance.exception.InvalidRequestException;
 import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
@@ -68,65 +69,80 @@ public class InstructorService {
 
     @Transactional
     public InstructorDTO addInstructor(AddInstructorRequest request) {
-        // Check if instructor already exists
-        Optional<User> existingUser = userRepository.findByEmail(request.getEmail());
-
-        if (existingUser.isPresent()) {
-            // Update existing user to be an instructor
-            User user = existingUser.get();
-            user.setFirstName(request.getFirstName());
-            user.setLastName(request.getLastName());
-            user.setIsInstructor(true);
-            user.setEnabled(true);
-            userRepository.save(user);
-            return mapToInstructorDTO(user, Collections.emptyList());
-        } else {
-            // Create new instructor using native SQL to allow database trigger to generate ID
-            String sql = "INSERT INTO users (email, first_name, last_name, is_instructor, is_student, is_ta, enabled, created_at) " +
-                         "VALUES (:email, :firstName, :lastName, true, false, false, true, CURRENT_TIMESTAMP) " +
-                         "RETURNING id";
-            
-            String generatedId = (String) entityManager.createNativeQuery(sql)
-                    .setParameter("email", request.getEmail())
-                    .setParameter("firstName", request.getFirstName())
-                    .setParameter("lastName", request.getLastName())
-                    .getSingleResult();
-
-            // Fetch the newly created instructor
-            User savedInstructor = userRepository.findById(generatedId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Instructor", generatedId));
-
-            return mapToInstructorDTO(savedInstructor, Collections.emptyList());
+        try {
+            // Check if instructor already exists
+            Optional<User> existingUser = userRepository.findByEmail(request.getEmail());
+    
+            if (existingUser.isPresent()) {
+                // Update existing user to be an instructor
+                User user = existingUser.get();
+                user.setFirstName(request.getFirstName());
+                user.setLastName(request.getLastName());
+                user.setIsInstructor(true);
+                user.setEnabled(true);
+                userRepository.save(user);
+                return mapToInstructorDTO(user, Collections.emptyList());
+            } else {
+                // Create new instructor using native SQL to allow database trigger to generate ID
+                String sql = "INSERT INTO users (email, first_name, last_name, is_instructor, is_student, is_ta, enabled, created_at) " +
+                             "VALUES (:email, :firstName, :lastName, true, false, false, true, CURRENT_TIMESTAMP) " +
+                             "RETURNING id";
+                
+                String generatedId = (String) entityManager.createNativeQuery(sql)
+                        .setParameter("email", request.getEmail())
+                        .setParameter("firstName", request.getFirstName())
+                        .setParameter("lastName", request.getLastName())
+                        .getSingleResult();
+    
+                // Fetch the newly created instructor
+                User savedInstructor = userRepository.findById(generatedId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Instructor", generatedId));
+    
+                return mapToInstructorDTO(savedInstructor, Collections.emptyList());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new InvalidRequestException("Instructor could not be added.");
         }
     }
 
     @Transactional
     public void removeInstructor(String userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Instructor", userId));
-
-        // Delete all section assignments
-        sectionAssignmentRepository.deleteByUserIdAndRole(userId, "INSTRUCTOR");
-
-        // Delete the user completely
-        userRepository.delete(user);
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Instructor", userId));
+    
+            // Delete all section assignments
+            sectionAssignmentRepository.deleteByUserIdAndRole(userId, "INSTRUCTOR");
+    
+            // Delete the user completely
+            userRepository.delete(user);
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new InvalidRequestException("Instructor could not be removed.");
+        }
     }
 
     @Transactional
     public void updateInstructorAssignments(String userId, UpdateInstructorAssignmentsRequest request) {
-        // Verify instructor exists
-        User instructor = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Instructor", userId));
-
-        // Delete existing instructor assignments
-        sectionAssignmentRepository.deleteByUserIdAndRole(userId, "INSTRUCTOR");
-
-        // Insert new assignments
-        if (request.getSectionIds() != null && !request.getSectionIds().isEmpty()) {
-            List<SectionAssignment> newAssignments = request.getSectionIds().stream()
-                    .<SectionAssignment>map(sectionId -> new SectionAssignment(userId, sectionId, "INSTRUCTOR", true))
-                    .collect(Collectors.toList());
-            sectionAssignmentRepository.saveAll(newAssignments);
+        try {
+            // Verify instructor exists
+            User instructor = userRepository.findById(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Instructor", userId));
+    
+            // Delete existing instructor assignments
+            sectionAssignmentRepository.deleteByUserIdAndRole(userId, "INSTRUCTOR");
+    
+            // Insert new assignments
+            if (request.getSectionIds() != null && !request.getSectionIds().isEmpty()) {
+                List<SectionAssignment> newAssignments = request.getSectionIds().stream()
+                        .<SectionAssignment>map(sectionId -> new SectionAssignment(userId, sectionId, "INSTRUCTOR", true))
+                        .collect(Collectors.toList());
+                sectionAssignmentRepository.saveAll(newAssignments);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new InvalidRequestException("Instructor assignments could not be updated");
         }
     }
 

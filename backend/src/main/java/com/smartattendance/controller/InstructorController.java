@@ -30,44 +30,24 @@ public class InstructorController {
 
     @PostMapping
     public ResponseEntity<Map<String, String>> addInstructor(@RequestBody AddInstructorRequest request) {
-        try {
-            InstructorDTO newInstructor = instructorService.addInstructor(request);
-            return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(Map.of("message", "Instructor account created successfully.", "id", newInstructor.getId()));
-        } catch (RuntimeException e) {
-            System.err.println("Error adding instructor: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
-        }
+        InstructorDTO newInstructor = instructorService.addInstructor(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(Map.of("message", "Instructor account created successfully.", "id", newInstructor.getId()));
+        
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, String>> removeInstructor(@PathVariable String id) {
-        try {
-            instructorService.removeInstructor(id);
-            return ResponseEntity.ok(Map.of("message", "Instructor removed successfully."));
-        } catch (RuntimeException e) {
-            System.err.println("Error removing instructor: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
-        }
+        instructorService.removeInstructor(id);
+        return ResponseEntity.ok(Map.of("message", "Instructor removed successfully."));
     }
 
     @PutMapping("/{id}/assignments")
     public ResponseEntity<Map<String, String>> updateInstructorAssignments(
             @PathVariable String id,
             @RequestBody UpdateInstructorAssignmentsRequest request) {
-        try {
-            instructorService.updateInstructorAssignments(id, request);
-            return ResponseEntity.ok(Map.of("message", "Instructor assignments updated successfully."));
-        } catch (RuntimeException e) {
-            System.err.println("Error updating instructor assignments: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", e.getMessage()));
-        }
+        instructorService.updateInstructorAssignments(id, request);
+        return ResponseEntity.ok(Map.of("message", "Instructor assignments updated successfully."));
     }
 }
 
