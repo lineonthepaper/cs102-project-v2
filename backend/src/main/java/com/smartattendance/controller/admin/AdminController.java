@@ -11,17 +11,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/admin/instructors")
+@RequestMapping("/api/admin/")
 @CrossOrigin(origins = "http://localhost:5173")
-public class InstructorAdminController {
+public class AdminController {
 
     private final SupabaseAuthService supabaseAuthService;
 
-    public InstructorAdminController(SupabaseAuthService supabaseAuthService) {
+    public AdminController(SupabaseAuthService supabaseAuthService) {
         this.supabaseAuthService = supabaseAuthService;
     }
 
-    @DeleteMapping("/{authId}")
+    @DeleteMapping("/instructors/{authId}")
     public ResponseEntity<Map<String, Object>> removeInstructorAuth(@PathVariable String authId) {
         supabaseAuthService.removeAuthUser(authId);
 
@@ -29,6 +29,18 @@ public class InstructorAdminController {
         response.put("success", true);
         response.put("authId", authId);
         response.put("message", "Instructor removed from Supabase Auth");
+
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/teaching-assistants/{authId}")
+    public ResponseEntity<Map<String, Object>> removeTeachingAssistantAuth(@PathVariable String authId) {
+        supabaseAuthService.removeAuthUser(authId);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("authId", authId);
+        response.put("message", "Teaching Assistant removed from Supabase Auth");
 
         return ResponseEntity.ok(response);
     }
