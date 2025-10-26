@@ -43,8 +43,8 @@ dependencies {
     testAnnotationProcessor("org.projectlombok:lombok:1.18.34")
     testAnnotationProcessor("org.mapstruct:mapstruct-processor:1.5.5.Final")
 
-    // external OpenCV library
-    implementation(files("lib/opencv-4120.jar"))
+    // OpenCV with native libraries for all platforms (Windows, macOS, Linux)
+    implementation("org.openpnp:opencv:4.9.0-0")
 }
 
 tasks.withType<Test> {
