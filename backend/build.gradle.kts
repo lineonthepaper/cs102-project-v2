@@ -45,6 +45,8 @@ dependencies {
 
     // OpenCV with native libraries for all platforms (Windows, macOS, Linux)
     implementation("org.openpnp:opencv:4.9.0-0")
+
+    implementation("org.apache.commons:commons-csv:1.10.0")
 }
 
 tasks.withType<Test> {
