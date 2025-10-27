@@ -45,6 +45,23 @@ function Home() {
     navigate('/login')
   }
 
+  const downloadReport = async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/export/users');
+      const blob = await response.blob();
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'users-report.csv';
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Failed to download report');
+    }
+  };
+
   return (
     <div className="container">
       <div className="header">
@@ -103,9 +120,11 @@ function Home() {
         </div>
 
         <div className="card">
-          <h3>Reports</h3>
-          <p>View attendance analytics and export reports</p>
-          <button className="btn btn-secondary">View Reports</button>
+          <h3>Download Report</h3>
+          <p>View attendance analytics</p>
+          <button onClick={downloadReport} className="btn btn-secondary">
+            Export Report to CSV
+          </button>
         </div>
       </div>
     </div>
