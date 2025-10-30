@@ -92,7 +92,7 @@ public class SessionRecognitionManager {
 
         if (enrollments.isEmpty()) {
             return new SessionRecognitionContext(session, Collections.emptyMap(), Collections.emptyMap(),
-                    faceRecognitionService, votingWindowSize, votingRequiredVotes);
+                    faceRecognitionService, votingWindowSize, votingRequiredVotes, voteWeightBase, voteWeightAlpha);
         }
 
         List<String> studentIds = enrollments.stream()
@@ -162,7 +162,7 @@ public class SessionRecognitionManager {
         Set<String> retainedIds = profiles.keySet();
         existingStatuses.keySet().retainAll(retainedIds);
 
-        return new SessionRecognitionContext(session, profiles, existingStatuses, faceRecognitionService, votingWindowSize, votingRequiredVotes);
+        return new SessionRecognitionContext(session, profiles, existingStatuses, faceRecognitionService, votingWindowSize, votingRequiredVotes, voteWeightBase, voteWeightAlpha);
     }
 
     private byte[] decodeBase64(String value) {
@@ -186,6 +186,8 @@ public class SessionRecognitionManager {
         private final Map<String, Double> voteCounts = new ConcurrentHashMap<>();
         private final int windowSize;
         private final int requiredVotes;
+        private final double weightBase;
+        private final double weightAlpha;
         private int scans = 0;
 
         private volatile Map<String, List<float[]>> embeddingIndex;
@@ -195,7 +197,9 @@ public class SessionRecognitionManager {
                                           Map<String, AttendanceStatus> statuses,
                                           FaceRecognitionService recognitionService,
                                           int windowSize,
-                                          int requiredVotes) {
+                                          int requiredVotes,
+                                          double weightBase,
+                                          double weightAlpha) {
             this.session = session;
             this.profiles = profiles;
             this.statuses = new ConcurrentHashMap<>(statuses);
@@ -203,6 +207,8 @@ public class SessionRecognitionManager {
             rebuildEmbeddingIndex();
             this.windowSize = Math.max(1, windowSize);
             this.requiredVotes = Math.max(1, requiredVotes);
+            this.weightBase = weightBase;
+            this.weightAlpha = weightAlpha;
         }
 
         private void rebuildEmbeddingIndex() {
@@ -222,7 +228,7 @@ public class SessionRecognitionManager {
             if (top.isPresent() && top.get().getFaceName() != null) {
                 String candidateId = top.get().getFaceName();
                 float sim = top.get().getSimilarity();
-                double weight = Math.exp(voteWeightAlpha * (Math.max(0.0, sim - voteWeightBase)));
+                double weight = Math.exp(this.weightAlpha * (Math.max(0.0, sim - this.weightBase)));
                 if (Double.isInfinite(weight) || Double.isNaN(weight)) {
                     weight = 0.0;
                 }
