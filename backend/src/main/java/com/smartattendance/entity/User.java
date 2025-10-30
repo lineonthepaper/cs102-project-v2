@@ -59,7 +59,7 @@ public class User {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "face_images", columnDefinition = "jsonb", nullable = false)
     private List<String> faceImages = new ArrayList<>();
-
+    
     // Parsed face data (embeddings). Preferred over storing raw images.
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "face_profiles", columnDefinition = "jsonb")

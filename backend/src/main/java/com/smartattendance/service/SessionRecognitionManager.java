@@ -46,11 +46,6 @@ public class SessionRecognitionManager {
     @Value("${face.voting.requiredVotes:6}")
     private int votingRequiredVotes;
 
-    @Value("${face.voting.weight.base:0.95}")
-    private double voteWeightBase;
-
-    @Value("${face.voting.weight.alpha:50}")
-    private double voteWeightAlpha;
 
     private final Map<Long, SessionRecognitionContext> sessionCache = new ConcurrentHashMap<>();
 
@@ -92,7 +87,7 @@ public class SessionRecognitionManager {
 
         if (enrollments.isEmpty()) {
             return new SessionRecognitionContext(session, Collections.emptyMap(), Collections.emptyMap(),
-                    faceRecognitionService, votingWindowSize, votingRequiredVotes, voteWeightBase, voteWeightAlpha);
+                    faceRecognitionService, votingWindowSize, votingRequiredVotes);
         }
 
         List<String> studentIds = enrollments.stream()
@@ -162,7 +157,7 @@ public class SessionRecognitionManager {
         Set<String> retainedIds = profiles.keySet();
         existingStatuses.keySet().retainAll(retainedIds);
 
-        return new SessionRecognitionContext(session, profiles, existingStatuses, faceRecognitionService, votingWindowSize, votingRequiredVotes, voteWeightBase, voteWeightAlpha);
+        return new SessionRecognitionContext(session, profiles, existingStatuses, faceRecognitionService, votingWindowSize, votingRequiredVotes);
     }
 
     private byte[] decodeBase64(String value) {
@@ -183,11 +178,9 @@ public class SessionRecognitionManager {
         private final Map<String, StudentProfile> profiles;
         private final Map<String, AttendanceStatus> statuses;
         private final FaceRecognitionService recognitionService;
-        private final Map<String, Double> voteCounts = new ConcurrentHashMap<>();
+        private final Map<String, Integer> voteCounts = new ConcurrentHashMap<>();
         private final int windowSize;
         private final int requiredVotes;
-        private final double weightBase;
-        private final double weightAlpha;
         private int scans = 0;
 
         private volatile Map<String, List<float[]>> embeddingIndex;
@@ -197,9 +190,7 @@ public class SessionRecognitionManager {
                                           Map<String, AttendanceStatus> statuses,
                                           FaceRecognitionService recognitionService,
                                           int windowSize,
-                                          int requiredVotes,
-                                          double weightBase,
-                                          double weightAlpha) {
+                                          int requiredVotes) {
             this.session = session;
             this.profiles = profiles;
             this.statuses = new ConcurrentHashMap<>(statuses);
@@ -207,8 +198,6 @@ public class SessionRecognitionManager {
             rebuildEmbeddingIndex();
             this.windowSize = Math.max(1, windowSize);
             this.requiredVotes = Math.max(1, requiredVotes);
-            this.weightBase = weightBase;
-            this.weightAlpha = weightAlpha;
         }
 
         private void rebuildEmbeddingIndex() {
@@ -227,18 +216,12 @@ public class SessionRecognitionManager {
             Optional<ComparisonResult> top = recognitionService.topCandidate(imageBytes, embeddingIndex);
             if (top.isPresent() && top.get().getFaceName() != null) {
                 String candidateId = top.get().getFaceName();
-                float sim = top.get().getSimilarity();
-                double weight = Math.exp(this.weightAlpha * (Math.max(0.0, sim - this.weightBase)));
-                if (Double.isInfinite(weight) || Double.isNaN(weight)) {
-                    weight = 0.0;
-                }
-                double clamped = Math.min(Math.max(weight, 0.0), 1_000_000.0);
-                voteCounts.merge(candidateId, clamped, Double::sum);
+                voteCounts.merge(candidateId, 1, Integer::sum);
             }
             scans++;
 
             // Decide when enough votes gathered or window completed
-            Map.Entry<String, Double> bestVote = voteCounts.entrySet().stream()
+            Map.Entry<String, Integer> bestVote = voteCounts.entrySet().stream()
                     .max(Map.Entry.comparingByValue())
                     .orElse(null);
 
@@ -251,10 +234,9 @@ public class SessionRecognitionManager {
                     scans = 0;
                     return FaceScanResponseDTOBuilder.noMatch("Scanning...");
                 }
-                // Optional: compute similarity for reporting
-                Optional<FaceMatch> gated = recognitionService.matchFace(imageBytes, embeddingIndex);
+                // Use the top candidate similarity observed during voting (no extra gated computation)
                 float topSim = top.map(ComparisonResult::getSimilarity).orElse(0.0f);
-                double similarity = gated.map(FaceMatch::getSimilarity).orElse((double) topSim);
+                double similarity = (double) topSim;
                 AttendanceStatus currentStatus = statuses.get(studentId);
                 if (currentStatus != null && currentStatus.isPresent()) {
                     // reset after decision so the next click re-scans fresh
@@ -274,7 +256,7 @@ public class SessionRecognitionManager {
             }
 
             // Keep scanning until we can decide
-            System.out.println("[DEBUG] Voting in progress: scans=" + scans + "/" + windowSize + ", weightedVotes=" + voteCounts);
+            System.out.println("[DEBUG] Voting in progress: scans=" + scans + "/" + windowSize + ", votes=" + voteCounts);
             return FaceScanResponseDTOBuilder.noMatch("Scanning...");
         }
 

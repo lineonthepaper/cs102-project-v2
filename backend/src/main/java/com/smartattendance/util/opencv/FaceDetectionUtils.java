@@ -28,7 +28,7 @@ public class FaceDetectionUtils {
             gray = grayClahe;
         } catch (Exception e) {
             // Fallback to equalizeHist if CLAHE unavailable
-            Imgproc.equalizeHist(gray, gray);
+        Imgproc.equalizeHist(gray, gray);
         }
 
         // Detect faces with better parameters
@@ -85,7 +85,7 @@ public class FaceDetectionUtils {
 
         // Extract face from original color image (not grayscale)
         Mat face = new Mat(image, squareRoi);
-
+        
         // Resize with appropriate interpolation
         Mat resizedFace = new Mat();
         int interp = (face.width() >= 112 || face.height() >= 112) ? Imgproc.INTER_AREA : Imgproc.INTER_CUBIC;
