@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, Fragment, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabase'
 
@@ -24,6 +24,8 @@ function Students() {
   const [enrollmentSelections, setEnrollmentSelections] = useState({})
   const [savingEnrollment, setSavingEnrollment] = useState(false)
   const [expandedCourses, setExpandedCourses] = useState({})
+  const [faceImages, setFaceImages] = useState([])
+  const fileInputRef = useRef(null)
   const parsedCourseFilter = Number(courseFilter)
   const selectedCourseId =
     courseFilter === 'all' || Number.isNaN(parsedCourseFilter) ? null : parsedCourseFilter
@@ -398,8 +400,93 @@ function Students() {
     setSelectedStudent(null)
   }
 
+  const resetFaceImageState = () => {
+    setFaceImages([])
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const openAddStudentModal = () => {
+    resetFaceImageState()
+    setShowAddStudentModal(true)
+  }
+
   const closeAddStudentModal = () => {
     setShowAddStudentModal(false)
+    resetFaceImageState()
+  }
+
+  const generateImageId = () =>
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+  const readFileAsDataUrl = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result)
+        } else {
+          reject(new Error('Failed to read file'))
+        }
+      }
+      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.readAsDataURL(file)
+    })
+
+  const handleUploadButtonClick = () => {
+    if (faceImages.length >= 8) {
+      alert('You can upload up to 8 images for each student.')
+      return
+    }
+    fileInputRef.current?.click()
+  }
+
+  const handleFaceImageSelection = async (event) => {
+    const files = Array.from(event.target.files || [])
+    if (files.length === 0) {
+      return
+    }
+
+    const remainingCapacity = 8 - faceImages.length
+    if (remainingCapacity <= 0) {
+      alert('Maximum of 8 images reached.')
+      event.target.value = ''
+      return
+    }
+
+    const filesToProcess = files.slice(0, remainingCapacity)
+    if (files.length > remainingCapacity) {
+      alert('Only the first 8 images were added. Please remove some images before uploading more.')
+    }
+
+    try {
+      const processed = await Promise.all(
+        filesToProcess.map(async (file) => {
+          const dataUrl = await readFileAsDataUrl(file)
+          const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl
+          return {
+            id: generateImageId(),
+            preview: dataUrl,
+            data: base64Data,
+            name: file.name
+          }
+        })
+      )
+
+      setFaceImages((prev) => [...prev, ...processed])
+    } catch (error) {
+      console.error('Failed to process face images:', error)
+      alert('Failed to process one or more images. Please try again with valid image files.')
+    } finally {
+      event.target.value = ''
+    }
+  }
+
+  const handleRemoveFaceImage = (imageId) => {
+    setFaceImages((prev) => prev.filter((image) => image.id !== imageId))
   }
 
   const openManageEnrollmentModal = (student) => {
@@ -550,7 +637,7 @@ function Students() {
 
       {/* Students Table */}
       <div className="table-header">
-        <button onClick={() => setShowAddStudentModal(true)} className="btn btn-primary-small">
+        <button onClick={openAddStudentModal} className="btn btn-primary-small">
           Add Student
         </button>
       </div>
@@ -874,7 +961,8 @@ function Students() {
                 const studentData = {
                   email: formData.get('email'),
                   firstName: formData.get('firstName'),
-                  lastName: formData.get('lastName')
+                  lastName: formData.get('lastName'),
+                  faceImages: faceImages.map((image) => image.data)
                 }
 
                 try {
@@ -939,6 +1027,40 @@ function Students() {
                     autoComplete="off"
                     required
                   />
+                </div>
+
+                <div className="form-group face-images-section">
+                  <label className="form-label">Face Images</label>
+                  <div className="face-images-row">
+                    <button
+                      type="button"
+                      className="btn-secondary-small upload-button"
+                      onClick={handleUploadButtonClick}
+                    >
+                      Upload Image
+                    </button>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      ref={fileInputRef}
+                      onChange={handleFaceImageSelection}
+                      style={{ display: 'none' }}
+                    />
+                    {faceImages.map((image, index) => (
+                      <div key={image.id} className="face-image-item">
+                        <img src={image.preview} alt={`Face ${index + 1}`} />
+                        <button
+                          type="button"
+                          className="face-image-remove"
+                          onClick={() => handleRemoveFaceImage(image.id)}
+                          aria-label={`Remove face image ${index + 1}`}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="form-actions">

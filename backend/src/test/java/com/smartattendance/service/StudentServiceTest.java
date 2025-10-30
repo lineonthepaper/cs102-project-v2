@@ -6,6 +6,7 @@ import com.smartattendance.entity.User;
 import com.smartattendance.exception.DuplicateEmailException;
 import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.repository.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,9 @@ class StudentServiceTest {
 
     @Mock
     private com.smartattendance.mapper.EntityMapper mapper;
+
+    @Mock
+    private ObjectMapper objectMapper;
 
     @InjectMocks
     private StudentService studentService;
@@ -102,7 +106,7 @@ class StudentServiceTest {
     void createStudent_ShouldThrowException_WhenEmailExists() {
         // Arrange
         CreateStudentRequest request = new CreateStudentRequest(
-            "test@example.com", "John", "Doe"
+            "test@example.com", "John", "Doe", Collections.emptyList()
         );
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(testStudent));
 

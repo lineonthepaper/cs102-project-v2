@@ -24,6 +24,7 @@ public class StudentDTO {
     private Integer lateSessions;
     private Integer attendanceRate;
     private Integer punctualityRate;
+    private List<String> faceImages;
     
     // Relationships
     private List<EnrollmentDTO> enrollments;

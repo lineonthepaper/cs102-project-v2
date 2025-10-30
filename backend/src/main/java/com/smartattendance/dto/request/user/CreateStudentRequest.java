@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Data Transfer Object for creating a new student.
@@ -32,5 +34,8 @@ public class CreateStudentRequest {
           max = ValidationConstants.NAME_MAX_LENGTH, 
           message = "Last name must be between 1 and 50 characters")
     private String lastName;
+
+    @Size(max = 8, message = "You can upload up to 8 face images")
+    private List<String> faceImages = new ArrayList<>();
 }
 

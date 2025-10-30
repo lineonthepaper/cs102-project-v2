@@ -5,9 +5,12 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Getter  // Only generate getters
@@ -52,6 +55,10 @@ public class User {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "face_images", columnDefinition = "jsonb", nullable = false)
+    private List<String> faceImages = new ArrayList<>();
     
     // ===== VALIDATED SETTERS (ISP Fix) =====
     
@@ -119,6 +126,25 @@ public class User {
     
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public void setFaceImages(List<String> faceImages) {
+        if (faceImages == null) {
+            this.faceImages = new ArrayList<>();
+            return;
+        }
+        if (faceImages.size() > 8) {
+            throw new IllegalArgumentException("Face images cannot exceed 8 entries");
+        }
+
+        List<String> sanitizedImages = new ArrayList<>();
+        for (String image : faceImages) {
+            if (image == null || image.isBlank()) {
+                throw new IllegalArgumentException("Face image data cannot be null or blank");
+            }
+            sanitizedImages.add(image.trim());
+        }
+        this.faceImages = sanitizedImages;
     }
 
     // ===== BUSINESS LOGIC METHODS (Rich Domain Model) =====

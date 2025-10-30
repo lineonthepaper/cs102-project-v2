@@ -11,7 +11,10 @@ import com.smartattendance.exception.DuplicateEmailException;
 import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
+import com.smartattendance.util.converter.ImageConverter;
 import com.smartattendance.util.helper.ServiceUtils;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
@@ -38,6 +41,7 @@ public class StudentService {
     private final CourseRepository courseRepository;
     private final SectionRepository sectionRepository;
     private final EntityMapper mapper;
+    private final ObjectMapper objectMapper;
 
     public StudentService(
             UserRepository userRepository,
@@ -46,7 +50,8 @@ public class StudentService {
             SectionEnrollmentRepository enrollmentRepository,
             CourseRepository courseRepository,
             SectionRepository sectionRepository,
-            EntityMapper mapper) {
+            EntityMapper mapper,
+            ObjectMapper objectMapper) {
         this.userRepository = userRepository;
         this.attendanceRecordRepository = attendanceRecordRepository;
         this.attendanceSessionRepository = attendanceSessionRepository;
@@ -54,6 +59,7 @@ public class StudentService {
         this.courseRepository = courseRepository;
         this.sectionRepository = sectionRepository;
         this.mapper = mapper;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -107,15 +113,29 @@ public class StudentService {
         }
 
         try {
+            List<String> faceImages = Optional.ofNullable(request.getFaceImages())
+                    .map(images -> images.stream()
+                            .map(ImageConverter::base64ToBytes)
+                            .map(ImageConverter::bytesToBase64)
+                            .collect(Collectors.toList()))
+                    .orElse(Collections.emptyList());
+
+            if (faceImages.size() > 8) {
+                throw new IllegalArgumentException("Face images cannot exceed 8 entries");
+            }
+
+            String faceImagesJson = serializeFaceImages(faceImages);
+
             // Use native SQL to insert student so database trigger can generate the ID
-            String sql = "INSERT INTO users (email, first_name, last_name, is_student, is_instructor, is_ta, enabled, created_at) " +
-                         "VALUES (:email, :firstName, :lastName, true, false, false, true, CURRENT_TIMESTAMP) " +
+            String sql = "INSERT INTO users (email, first_name, last_name, face_images, is_student, is_instructor, is_ta, enabled, created_at) " +
+                         "VALUES (:email, :firstName, :lastName, CAST(:faceImages AS jsonb), true, false, false, true, CURRENT_TIMESTAMP) " +
                          "RETURNING id";
             
             String generatedId = (String) entityManager.createNativeQuery(sql)
                     .setParameter("email", request.getEmail())
                     .setParameter("firstName", request.getFirstName())
                     .setParameter("lastName", request.getLastName())
+                    .setParameter("faceImages", faceImagesJson)
                     .getSingleResult();
             
             logger.debug("Student created with ID: {}", generatedId);
@@ -124,8 +144,11 @@ public class StudentService {
             User savedStudent = userRepository.findById(generatedId)
                     .orElseThrow(() -> new ResourceNotFoundException("Student", generatedId));
 
+            StudentDTO dto = mapToStudentDTO(savedStudent, Collections.emptyList(), Collections.emptyList());
+            dto.setFaceImages(new ArrayList<>(faceImages));
+
             logger.info("Successfully created student: {} {} ({})", request.getFirstName(), request.getLastName(), generatedId);
-            return mapToStudentDTO(savedStudent, Collections.emptyList(), Collections.emptyList());
+            return dto;
         } catch (Exception e) {
             logger.error("Failed to create student: {}", request.getEmail(), e);
             throw new RuntimeException("Failed to create student", e);
@@ -318,6 +341,7 @@ public class StudentService {
         dto.setFirstName(student.getFirstName());
         dto.setLastName(student.getLastName());
         dto.setEnabled(student.getEnabled());
+        dto.setFaceImages(student.getFaceImages() != null ? new ArrayList<>(student.getFaceImages()) : Collections.emptyList());
 
         // Calculate stats but don't include individual records
         User.AttendanceStatistics stats = student.calculateAttendanceStats(attendanceRecords);
@@ -346,6 +370,7 @@ public class StudentService {
         dto.setFirstName(student.getFirstName());
         dto.setLastName(student.getLastName());
         dto.setEnabled(student.getEnabled());
+        dto.setFaceImages(student.getFaceImages() != null ? new ArrayList<>(student.getFaceImages()) : Collections.emptyList());
 
         // Let the entity calculate its own statistics (Rich Domain Model)
         User.AttendanceStatistics stats = student.calculateAttendanceStats(attendanceRecords);
@@ -360,6 +385,14 @@ public class StudentService {
         dto.setEnrollments(mapper.toEnrollmentDTOs(enrollments));
 
         return dto;
+    }
+
+    private String serializeFaceImages(List<String> faceImages) {
+        try {
+            return objectMapper.writeValueAsString(faceImages);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("Failed to serialize face images", e);
+        }
     }
 }
 
