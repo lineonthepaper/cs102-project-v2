@@ -1,64 +1,41 @@
-import { useAuth } from './AuthContext'
-import { useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
-import { supabase } from './supabase'
+import { useAuth } from "./AuthContext";
+import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { supabase } from "./supabase";
 
 function Home() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
-  const [userRole, setUserRole] = useState('Loading...')
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [userRole, setUserRole] = useState("Loading...");
 
   useEffect(() => {
-    const fetchUserRole = async () => {
-      if (user?.email) {
-        try {
-          const { data, error } = await supabase
-            .from('users')
-            .select('is_student, is_instructor, is_ta')
-            .eq('email', user.email)
-            .maybeSingle()
-
-          if (data && !error) {
-            // Priority: Instructor > Teaching Assistant > Student > Admin
-            if (data.is_instructor) setUserRole('Instructor')
-            else if (data.is_ta) setUserRole('Teaching Assistant')
-            else if (data.is_student) setUserRole('Student')
-            else setUserRole('Admin') // System administrator (not instructor/TA/student)
-          } else if (!data) {
-            // User not in database - treat as Admin for authenticated system users
-            setUserRole('Admin')
-          } else {
-            setUserRole('Admin')
-          }
-        } catch (err) {
-          console.error('Error fetching user role:', err)
-          setUserRole('Admin')
-        }
-      }
+    if (user) {
+      if (user.user.isInstructor) setUserRole("Instructor");
+      else if (user.user.isTA) setUserRole("Teaching Assistant");
+      else if (user.user.isStudent) setUserRole("Student");
+      else setUserRole("Admin");
     }
-
-    fetchUserRole()
-  }, [user?.email])
+  }, [user]);
 
   const handleLogout = async () => {
-    await logout()
-    navigate('/login')
-  }
+    logout();
+    navigate("/login");
+  };
 
   const downloadReport = async () => {
     try {
-      const response = await fetch('http://localhost:8080/api/export/users');
+      const response = await fetch("http://localhost:8080/api/export/users");
       const blob = await response.blob();
 
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = 'users-report.csv';
+      a.download = "users-report.csv";
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Download failed:', error);
-      alert('Failed to download report');
+      console.error("Download failed:", error);
+      alert("Failed to download report");
     }
   };
 
@@ -82,7 +59,10 @@ function Home() {
         <div className="card">
           <h3>Students</h3>
           <p>Manage student records, enrollments, and face recognition data</p>
-          <button onClick={() => navigate('/students')} className="btn btn-secondary">
+          <button
+            onClick={() => navigate("/students")}
+            className="btn btn-secondary"
+          >
             Manage Students
           </button>
         </div>
@@ -90,7 +70,10 @@ function Home() {
         <div className="card">
           <h3>Teaching Assistants</h3>
           <p>Manage Teaching Assistant status and section assignments</p>
-          <button onClick={() => navigate('/teaching-assistants')} className="btn btn-secondary">
+          <button
+            onClick={() => navigate("/teaching-assistants")}
+            className="btn btn-secondary"
+          >
             Manage Teaching Assistants
           </button>
         </div>
@@ -98,7 +81,10 @@ function Home() {
         <div className="card">
           <h3>Instructors</h3>
           <p>Manage instructor accounts and teaching assignments</p>
-          <button onClick={() => navigate('/instructors')} className="btn btn-secondary">
+          <button
+            onClick={() => navigate("/instructors")}
+            className="btn btn-secondary"
+          >
             Manage Instructors
           </button>
         </div>
@@ -106,7 +92,10 @@ function Home() {
         <div className="card">
           <h3>Classes</h3>
           <p>Create and manage course sections and schedules</p>
-          <button onClick={() => navigate('/classes')} className="btn btn-secondary">
+          <button
+            onClick={() => navigate("/classes")}
+            className="btn btn-secondary"
+          >
             Manage Classes
           </button>
         </div>
@@ -114,7 +103,10 @@ function Home() {
         <div className="card">
           <h3>Mark Attendance</h3>
           <p>Create sessions, mark student attendance, and manage records</p>
-          <button onClick={() => navigate('/attendance')} className="btn btn-secondary">
+          <button
+            onClick={() => navigate("/attendance")}
+            className="btn btn-secondary"
+          >
             Mark Attendance
           </button>
         </div>
@@ -128,7 +120,7 @@ function Home() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default Home
+export default Home;

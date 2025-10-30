@@ -1,117 +1,112 @@
-import { createContext, useContext, useState, useEffect } from 'react'
-import type { ReactNode } from 'react'
-import { supabase } from './supabase'
-import type { User, AuthError } from '@supabase/supabase-js'
+import { createContext, useContext, useEffect, useState } from 'react'
 
 const API_BASE_URL = 'http://localhost:8080'
+
+interface User {
+  id: string
+  authId: string
+  email: string
+  firstName: string
+  lastName: string
+  isStudent: boolean
+  isInstructor: boolean
+  isTA: boolean
+  enabled: boolean
+}
 
 interface AuthContextType {
   user: User | null
   loading: boolean
-  login: (email: string, password: string) => Promise<{ error: AuthError | null }>
-  register: (email: string, password: string, firstName: string, lastName: string) => Promise<{ error: AuthError | null }>
-  logout: () => Promise<void>
+  login: (email: string, password: string) => Promise<{ error: string | null }>
+  register: (
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string,
+    role: 'student' | 'instructor'
+  ) => Promise<{ error: string | null }>
+  logout: () => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setUser(session?.user || null)
-      setLoading(false)
+    const storedUser = localStorage.getItem('user')
+    if (storedUser) {
+      setUser(JSON.parse(storedUser))
     }
-
-    getSession()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null)
-      setLoading(false)
-    })
-
-    return () => subscription.unsubscribe()
+    setLoading(false)
   }, [])
 
   const login = async (email: string, password: string) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
       })
 
       if (!response.ok) {
         const errorData = await response.json()
-        return { error: { message: errorData.error || 'Failed to login' } as AuthError }
+        return { error: { message: errorData.error || 'Failed to login' } }
       }
 
-      const data = await response.json()
-      
-      // Store tokens
-      localStorage.setItem('access_token', data.accessToken)
-      localStorage.setItem('refresh_token', data.refreshToken)
-      
-      // Create user object compatible with Supabase User type
-      const user = {
-        id: data.user.authId,
-        email: data.user.email,
-        user_metadata: {
-          first_name: data.user.firstName,
-          last_name: data.user.lastName
-        }
-      } as User
+      const userData = await response.json()
+      localStorage.setItem('user', JSON.stringify(userData))
+      setUser(userData)
 
-      setUser(user)
       return { error: null }
-    } catch (error: any) {
-      return { error: { message: error.message || 'Failed to login' } as AuthError }
+    } catch (err: any) {
+      return { error: err.message || 'Login failed' }
     }
   }
 
-  const register = async (email: string, password: string, firstName: string, lastName: string) => {
+  const register = async (
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string,
+    role: 'student' | 'instructor'
+  ) => {
     try {
+      const body = {
+        email,
+        password,
+        firstName,
+        lastName,
+        isStudent: role === 'student',
+        isInstructor: role === 'instructor',
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password, firstName, lastName })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       })
 
       if (!response.ok) {
         const errorData = await response.json()
-        return { error: { message: errorData.error || 'Failed to register' } as AuthError }
+        return { error: errorData.error || 'Registration failed' }
       }
 
-      // After successful registration, automatically log in
+      // Automatically log in after registering
       return await login(email, password)
-    } catch (error: any) {
-      return { error: { message: error.message || 'Failed to register' } as AuthError }
+    } catch (err: any) {
+      return { error: err.message || 'Registration failed' }
     }
   }
 
-  const logout = async () => {
-    // Clear localStorage tokens
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    
-    // Sign out from Supabase to clear session
-    await supabase.auth.signOut()
-    
-    // Clear user state
+  const logout = () => {
+    localStorage.removeItem('user')
     setUser(null)
   }
 
-  const value: AuthContextType = { user, loading, login, register, logout }
-
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   )
@@ -119,9 +114,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export const useAuth = () => {
   const context = useContext(AuthContext)
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider')
   return context
 }
-
