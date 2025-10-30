@@ -229,7 +229,7 @@ function Attendance() {
       return
     }
     stopFrameLoop()
-    scanIntervalRef.current = setInterval(captureAndSendFrame, 1500)
+    scanIntervalRef.current = setInterval(captureAndSendFrame, 62)
   }
 
   const stopFrameLoop = () => {
@@ -271,11 +271,16 @@ function Attendance() {
 
     const canvas = canvasRef.current
     const context = canvas.getContext('2d')
-    canvas.width = video.videoWidth || 640
-    canvas.height = video.videoHeight || 480
-    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const srcW = video.videoWidth || 640
+    const srcH = video.videoHeight || 480
+    const targetW = Math.min(480, srcW)
+    const scale = targetW / srcW
+    const targetH = Math.round(srcH * scale)
+    canvas.width = targetW
+    canvas.height = targetH
+    context.drawImage(video, 0, 0, targetW, targetH)
 
-    const imageData = canvas.toDataURL('image/jpeg', 0.9)
+    const imageData = canvas.toDataURL('image/jpeg', 0.5)
     isSendingFrameRef.current = true
 
     try {

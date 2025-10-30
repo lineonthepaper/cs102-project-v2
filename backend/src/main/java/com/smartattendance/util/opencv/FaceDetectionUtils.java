@@ -16,10 +16,20 @@ public class FaceDetectionUtils {
         Mat image = Imgcodecs.imdecode(new MatOfByte(imageBytes), Imgcodecs.IMREAD_COLOR);
         System.out.println("[DEBUG] Image decoded: " + image.width() + "x" + image.height());
 
-        // Convert to grayscale for better face detection
+        // Convert to grayscale for better face detection with CLAHE (more robust lighting)
         Mat gray = new Mat();
         Imgproc.cvtColor(image, gray, Imgproc.COLOR_BGR2GRAY);
-        Imgproc.equalizeHist(gray, gray);
+        // Use CLAHE instead of global histogram equalization to avoid over-amplifying noise
+        try {
+            CLAHE clahe = Imgproc.createCLAHE(2.0, new Size(8, 8));
+            Mat grayClahe = new Mat();
+            clahe.apply(gray, grayClahe);
+            gray.release();
+            gray = grayClahe;
+        } catch (Exception e) {
+            // Fallback to equalizeHist if CLAHE unavailable
+            Imgproc.equalizeHist(gray, gray);
+        }
 
         // Detect faces with better parameters
         MatOfRect faceDetections = new MatOfRect();
@@ -54,16 +64,32 @@ public class FaceDetectionUtils {
             faces[0] = largest;
         }
 
+        // Expand to a square crop with margin and clamp to image bounds
         Rect faceRect = faces[0];
-        System.out.println(String.format("[DEBUG] Face location: x=%d, y=%d, w=%d, h=%d", 
-                                        faceRect.x, faceRect.y, faceRect.width, faceRect.height));
+        int centerX = faceRect.x + faceRect.width / 2;
+        int centerY = faceRect.y + faceRect.height / 2;
+        int maxSide = Math.max(faceRect.width, faceRect.height);
+        // Add a 20% margin to include context and reduce tight crops
+        int sideWithMargin = (int) Math.round(maxSide * 1.2);
+        int x = centerX - sideWithMargin / 2;
+        int y = centerY - sideWithMargin / 2;
+        // Clamp to image bounds
+        x = Math.max(0, Math.min(x, image.width() - 1));
+        y = Math.max(0, Math.min(y, image.height() - 1));
+        int w = Math.min(sideWithMargin, image.width() - x);
+        int h = Math.min(sideWithMargin, image.height() - y);
+        // Make final crop square
+        int side = Math.min(w, h);
+        Rect squareRoi = new Rect(x, y, side, side);
+        System.out.println(String.format("[DEBUG] Face crop (square): x=%d, y=%d, s=%d", squareRoi.x, squareRoi.y, squareRoi.width));
 
         // Extract face from original color image (not grayscale)
-        Mat face = new Mat(image, faceRect);
-        
-        // Resize with high quality interpolation
+        Mat face = new Mat(image, squareRoi);
+
+        // Resize with appropriate interpolation
         Mat resizedFace = new Mat();
-        Imgproc.resize(face, resizedFace, new Size(112, 112), 0, 0, Imgproc.INTER_CUBIC);
+        int interp = (face.width() >= 112 || face.height() >= 112) ? Imgproc.INTER_AREA : Imgproc.INTER_CUBIC;
+        Imgproc.resize(face, resizedFace, new Size(112, 112), 0, 0, interp);
         System.out.println("[DEBUG] Face resized to 112x112 for embedding");
         
         // DEBUG: Save the detected face for verification

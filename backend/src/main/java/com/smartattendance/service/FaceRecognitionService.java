@@ -10,6 +10,7 @@ import org.opencv.dnn.Dnn;
 import org.opencv.dnn.Net;
 import org.opencv.objdetect.CascadeClassifier;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 
 import com.smartattendance.entity.ComparisonResult;
 import com.smartattendance.util.helper.ResourcePathUtils;
@@ -22,7 +23,22 @@ public class FaceRecognitionService {
 
     // ArcFace threshold is lower than SFace because it produces different embedding spaces
     // Typical ArcFace threshold: 0.4-0.6 (lower = stricter matching)
-    private static final double DEFAULT_SIMILARITY_THRESHOLD = 0.50;
+    private static final double DEFAULT_SIMILARITY_THRESHOLD = 0.88;
+
+    @Value("${face.similarityThreshold:0.88}")
+    private double similarityThreshold;
+
+    @Value("${face.perImageThreshold:0.85}")
+    private float perImageThreshold;
+
+    @Value("${face.minHitsRequired:2}")
+    private int minHitsRequired;
+
+    @Value("${face.singleImageStrictThreshold:0.92}")
+    private float singleImageStrictThreshold;
+
+    @Value("${face.top2Margin:0.03}")
+    private float top2Margin;
 
     private final ResourcePathUtils resourceUtils;
     private final Object modelLock = new Object();
@@ -57,14 +73,34 @@ public class FaceRecognitionService {
         System.out.println("[DEBUG] Live embedding computed: " + liveEmbedding.length + " dimensions, " +
                          "first 3 values: [" + liveEmbedding[0] + ", " + liveEmbedding[1] + ", " + liveEmbedding[2] + "]");
 
-        ComparisonResult result = FaceRecognitionUtils.findBestMatch(liveEmbedding, knownEmbeddings,
-                DEFAULT_SIMILARITY_THRESHOLD);
+        ComparisonResult result = FaceRecognitionUtils.findBestMatch(
+                liveEmbedding,
+                knownEmbeddings,
+                similarityThreshold,
+                perImageThreshold,
+                minHitsRequired,
+                singleImageStrictThreshold,
+                top2Margin);
 
         if (result == null || !result.isMatch()) {
             return Optional.empty();
         }
 
         return Optional.of(new FaceMatch(result.getFaceName(), result.getSimilarity()));
+    }
+
+    public Optional<ComparisonResult> topCandidate(byte[] imageBytes, Map<String, List<float[]>> knownEmbeddings) {
+        ensureModelsLoaded();
+        if (knownEmbeddings == null || knownEmbeddings.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<float[]> embeddingOptional = computeEmbedding(imageBytes);
+        if (embeddingOptional.isEmpty()) {
+            return Optional.empty();
+        }
+        float[] liveEmbedding = embeddingOptional.get();
+        ComparisonResult best = FaceRecognitionUtils.findTopCandidate(liveEmbedding, knownEmbeddings);
+        return Optional.ofNullable(best);
     }
 
     private void ensureModelsLoaded() {

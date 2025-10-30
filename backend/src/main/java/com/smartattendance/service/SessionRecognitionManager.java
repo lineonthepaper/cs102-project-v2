@@ -15,6 +15,8 @@ import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
+import com.smartattendance.entity.ComparisonResult;
 
 import com.smartattendance.dto.response.attendance.FaceScanResponseDTO;
 import com.smartattendance.dto.response.attendance.RecognizedStudentDTO;
@@ -38,6 +40,17 @@ public class SessionRecognitionManager {
     private final UserRepository userRepository;
     private final AttendanceRecordRepository recordRepository;
     private final FaceRecognitionService faceRecognitionService;
+    @Value("${face.voting.windowSize:10}")
+    private int votingWindowSize;
+
+    @Value("${face.voting.requiredVotes:6}")
+    private int votingRequiredVotes;
+
+    @Value("${face.voting.weight.base:0.95}")
+    private double voteWeightBase;
+
+    @Value("${face.voting.weight.alpha:50}")
+    private double voteWeightAlpha;
 
     private final Map<Long, SessionRecognitionContext> sessionCache = new ConcurrentHashMap<>();
 
@@ -79,7 +92,7 @@ public class SessionRecognitionManager {
 
         if (enrollments.isEmpty()) {
             return new SessionRecognitionContext(session, Collections.emptyMap(), Collections.emptyMap(),
-                    faceRecognitionService);
+                    faceRecognitionService, votingWindowSize, votingRequiredVotes);
         }
 
         List<String> studentIds = enrollments.stream()
@@ -149,7 +162,7 @@ public class SessionRecognitionManager {
         Set<String> retainedIds = profiles.keySet();
         existingStatuses.keySet().retainAll(retainedIds);
 
-        return new SessionRecognitionContext(session, profiles, existingStatuses, faceRecognitionService);
+        return new SessionRecognitionContext(session, profiles, existingStatuses, faceRecognitionService, votingWindowSize, votingRequiredVotes);
     }
 
     private byte[] decodeBase64(String value) {
@@ -170,18 +183,26 @@ public class SessionRecognitionManager {
         private final Map<String, StudentProfile> profiles;
         private final Map<String, AttendanceStatus> statuses;
         private final FaceRecognitionService recognitionService;
+        private final Map<String, Double> voteCounts = new ConcurrentHashMap<>();
+        private final int windowSize;
+        private final int requiredVotes;
+        private int scans = 0;
 
         private volatile Map<String, List<float[]>> embeddingIndex;
 
         private SessionRecognitionContext(AttendanceSession session,
                                           Map<String, StudentProfile> profiles,
                                           Map<String, AttendanceStatus> statuses,
-                                          FaceRecognitionService recognitionService) {
+                                          FaceRecognitionService recognitionService,
+                                          int windowSize,
+                                          int requiredVotes) {
             this.session = session;
             this.profiles = profiles;
             this.statuses = new ConcurrentHashMap<>(statuses);
             this.recognitionService = recognitionService;
             rebuildEmbeddingIndex();
+            this.windowSize = Math.max(1, windowSize);
+            this.requiredVotes = Math.max(1, requiredVotes);
         }
 
         private void rebuildEmbeddingIndex() {
@@ -196,40 +217,59 @@ public class SessionRecognitionManager {
             }
 
             System.out.println("[DEBUG] Matching face against " + embeddingIndex.size() + " students");
-            Optional<FaceMatch> faceMatch = recognitionService.matchFace(imageBytes, embeddingIndex);
-            if (faceMatch.isEmpty()) {
-                System.out.println("[DEBUG] No face match found");
-                return FaceScanResponseDTOBuilder.noMatch("Scanning...");
+            // Vote on top candidate each scan (even if below acceptance gates)
+            Optional<ComparisonResult> top = recognitionService.topCandidate(imageBytes, embeddingIndex);
+            if (top.isPresent() && top.get().getFaceName() != null) {
+                String candidateId = top.get().getFaceName();
+                float sim = top.get().getSimilarity();
+                double weight = Math.exp(voteWeightAlpha * (Math.max(0.0, sim - voteWeightBase)));
+                if (Double.isInfinite(weight) || Double.isNaN(weight)) {
+                    weight = 0.0;
+                }
+                double clamped = Math.min(Math.max(weight, 0.0), 1_000_000.0);
+                voteCounts.merge(candidateId, clamped, Double::sum);
+            }
+            scans++;
+
+            // Decide when enough votes gathered or window completed
+            Map.Entry<String, Double> bestVote = voteCounts.entrySet().stream()
+                    .max(Map.Entry.comparingByValue())
+                    .orElse(null);
+
+            if (bestVote != null && scans >= windowSize) {
+                String studentId = bestVote.getKey();
+                StudentProfile profile = profiles.get(studentId);
+                if (profile == null) {
+                    // reset for a fresh window next call
+                    voteCounts.clear();
+                    scans = 0;
+                    return FaceScanResponseDTOBuilder.noMatch("Scanning...");
+                }
+                // Optional: compute similarity for reporting
+                Optional<FaceMatch> gated = recognitionService.matchFace(imageBytes, embeddingIndex);
+                float topSim = top.map(ComparisonResult::getSimilarity).orElse(0.0f);
+                double similarity = gated.map(FaceMatch::getSimilarity).orElse((double) topSim);
+                AttendanceStatus currentStatus = statuses.get(studentId);
+                if (currentStatus != null && currentStatus.isPresent()) {
+                    // reset after decision so the next click re-scans fresh
+                    voteCounts.clear();
+                    scans = 0;
+                    return FaceScanResponseDTOBuilder.alreadyMarked(profile, similarity, currentStatus, "Student already marked as present");
+                }
+                ZonedDateTime now = ZonedDateTime.now(DEFAULT_ZONE);
+                AttendanceStatus recommendedStatus = session.isCheckinLate(now.toLocalDateTime())
+                        ? AttendanceStatus.LATE
+                        : AttendanceStatus.PRESENT;
+                // reset after decision so the next click re-scans fresh
+                FaceScanResponseDTO decided = FaceScanResponseDTOBuilder.match(profile, similarity, recommendedStatus, now.toOffsetDateTime());
+                voteCounts.clear();
+                scans = 0;
+                return decided;
             }
 
-            String studentId = faceMatch.get().getStudentId();
-            double similarity = faceMatch.get().getSimilarity();
-            System.out.println("[DEBUG] *** MATCH FOUND *** Student: " + studentId + ", Similarity: " + 
-                             String.format("%.2f%%", similarity * 100));
-            
-            StudentProfile profile = profiles.get(studentId);
-            if (profile == null) {
-                System.out.println("[DEBUG] Profile not found for student: " + studentId);
-                return FaceScanResponseDTOBuilder.noMatch("Student face data unavailable");
-            }
-
-            System.out.println("[DEBUG] Matched student: " + profile.getFirstName() + " " + profile.getLastName());
-
-            AttendanceStatus currentStatus = statuses.get(studentId);
-            if (currentStatus != null && currentStatus.isPresent()) {
-                System.out.println("[DEBUG] Student already marked as: " + currentStatus);
-                return FaceScanResponseDTOBuilder.alreadyMarked(profile, faceMatch.get().getSimilarity(),
-                        currentStatus, "Student already marked as present");
-            }
-
-            ZonedDateTime now = ZonedDateTime.now(DEFAULT_ZONE);
-            AttendanceStatus recommendedStatus = session.isCheckinLate(now.toLocalDateTime())
-                    ? AttendanceStatus.LATE
-                    : AttendanceStatus.PRESENT;
-
-            System.out.println("[DEBUG] Recommended status: " + recommendedStatus);
-            return FaceScanResponseDTOBuilder.match(profile, faceMatch.get().getSimilarity(), recommendedStatus,
-                    now.toOffsetDateTime());
+            // Keep scanning until we can decide
+            System.out.println("[DEBUG] Voting in progress: scans=" + scans + "/" + windowSize + ", weightedVotes=" + voteCounts);
+            return FaceScanResponseDTOBuilder.noMatch("Scanning...");
         }
 
         void updateStatus(String userId, AttendanceStatus status) {

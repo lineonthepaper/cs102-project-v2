@@ -59,6 +59,11 @@ public class User {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "face_images", columnDefinition = "jsonb", nullable = false)
     private List<String> faceImages = new ArrayList<>();
+
+    // Parsed face data (embeddings). Preferred over storing raw images.
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "face_profiles", columnDefinition = "jsonb")
+    private List<FaceProfile> faceProfiles = new ArrayList<>();
     
     // ===== VALIDATED SETTERS (ISP Fix) =====
     
@@ -145,6 +150,14 @@ public class User {
             sanitizedImages.add(image.trim());
         }
         this.faceImages = sanitizedImages;
+    }
+
+    public List<FaceProfile> getFaceProfiles() {
+        return faceProfiles;
+    }
+
+    public void setFaceProfiles(List<FaceProfile> faceProfiles) {
+        this.faceProfiles = faceProfiles != null ? faceProfiles : new ArrayList<>();
     }
 
     // ===== BUSINESS LOGIC METHODS (Rich Domain Model) =====

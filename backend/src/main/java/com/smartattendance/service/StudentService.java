@@ -12,6 +12,7 @@ import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
 import com.smartattendance.util.converter.ImageConverter;
+import java.time.OffsetDateTime;
 import com.smartattendance.util.helper.ServiceUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,6 +43,7 @@ public class StudentService {
     private final SectionRepository sectionRepository;
     private final EntityMapper mapper;
     private final ObjectMapper objectMapper;
+    private final FaceRecognitionService faceRecognitionService;
 
     public StudentService(
             UserRepository userRepository,
@@ -51,7 +53,8 @@ public class StudentService {
             CourseRepository courseRepository,
             SectionRepository sectionRepository,
             EntityMapper mapper,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            FaceRecognitionService faceRecognitionService) {
         this.userRepository = userRepository;
         this.attendanceRecordRepository = attendanceRecordRepository;
         this.attendanceSessionRepository = attendanceSessionRepository;
@@ -60,6 +63,7 @@ public class StudentService {
         this.sectionRepository = sectionRepository;
         this.mapper = mapper;
         this.objectMapper = objectMapper;
+        this.faceRecognitionService = faceRecognitionService;
     }
 
     @Transactional(readOnly = true)
@@ -126,9 +130,20 @@ public class StudentService {
 
             String faceImagesJson = serializeFaceImages(faceImages);
 
+            // Build face profiles (embeddings) from provided images
+            List<FaceProfile> profiles = new ArrayList<>();
+            for (String b64 : faceImages) {
+                byte[] bytes = ImageConverter.base64ToBytes(b64);
+                faceRecognitionService.computeEmbedding(bytes).ifPresent(emb -> {
+                    profiles.add(new FaceProfile(emb, OffsetDateTime.now()));
+                });
+            }
+
+            String faceProfilesJson = objectMapper.writeValueAsString(profiles);
+
             // Use native SQL to insert student so database trigger can generate the ID
-            String sql = "INSERT INTO users (email, first_name, last_name, face_images, is_student, is_instructor, is_ta, enabled, created_at) " +
-                         "VALUES (:email, :firstName, :lastName, CAST(:faceImages AS jsonb), true, false, false, true, CURRENT_TIMESTAMP) " +
+            String sql = "INSERT INTO users (email, first_name, last_name, face_images, face_profiles, is_student, is_instructor, is_ta, enabled, created_at) " +
+                         "VALUES (:email, :firstName, :lastName, CAST(:faceImages AS jsonb), CAST(:faceProfiles AS jsonb), true, false, false, true, CURRENT_TIMESTAMP) " +
                          "RETURNING id";
             
             String generatedId = (String) entityManager.createNativeQuery(sql)
@@ -136,6 +151,7 @@ public class StudentService {
                     .setParameter("firstName", request.getFirstName())
                     .setParameter("lastName", request.getLastName())
                     .setParameter("faceImages", faceImagesJson)
+                    .setParameter("faceProfiles", faceProfilesJson)
                     .getSingleResult();
             
             logger.debug("Student created with ID: {}", generatedId);
