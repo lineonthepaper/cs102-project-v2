@@ -245,22 +245,9 @@ public class SessionRecognitionManager {
                     return FaceScanResponseDTOBuilder.alreadyMarked(profile, similarity, currentStatus, "Student already marked as present");
                 }
                 ZonedDateTime now = ZonedDateTime.now(DEFAULT_ZONE);
-                // Only mark LATE if the scan date (SGT) matches the session date
-                AttendanceStatus recommendedStatus;
-                try {
-                    java.time.LocalDate scanDate = now.toLocalDate();
-                    java.time.LocalDate sessDate = session.getSessionDate();
-                    if (sessDate != null && scanDate.equals(sessDate)) {
-                        recommendedStatus = session.isCheckinLate(now.toLocalDateTime())
-                                ? AttendanceStatus.LATE
-                                : AttendanceStatus.PRESENT;
-                    } else {
-                        recommendedStatus = AttendanceStatus.PRESENT;
-                    }
-                } catch (Exception e) {
-                    // Fallback to present on any unexpected date parsing issue
-                    recommendedStatus = AttendanceStatus.PRESENT;
-                }
+                AttendanceStatus recommendedStatus = session.isCheckinLate(now.toLocalDateTime())
+                        ? AttendanceStatus.LATE
+                        : AttendanceStatus.PRESENT;
                 // reset after decision so the next click re-scans fresh
                 FaceScanResponseDTO decided = FaceScanResponseDTOBuilder.match(profile, similarity, recommendedStatus, now.toOffsetDateTime());
                 voteCounts.clear();
