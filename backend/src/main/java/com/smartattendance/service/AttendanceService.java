@@ -30,6 +30,7 @@ public class AttendanceService {
     private final SectionEnrollmentRepository enrollmentRepository;
     private final EntityMapper mapper;
     private final AttendanceStrategyFactory strategyFactory;
+    private final SessionRecognitionManager recognitionManager;
 
     public AttendanceService(
             AttendanceSessionRepository sessionRepository,
@@ -37,13 +38,15 @@ public class AttendanceService {
             SectionRepository sectionRepository,
             SectionEnrollmentRepository enrollmentRepository,
             EntityMapper mapper,
-            AttendanceStrategyFactory strategyFactory) {
+            AttendanceStrategyFactory strategyFactory,
+            SessionRecognitionManager recognitionManager) {
         this.sessionRepository = sessionRepository;
         this.recordRepository = recordRepository;
         this.sectionRepository = sectionRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.mapper = mapper;
         this.strategyFactory = strategyFactory;
+        this.recognitionManager = recognitionManager;
     }
 
     @Transactional(readOnly = true)
@@ -151,6 +154,7 @@ public class AttendanceService {
             }
     
             AttendanceRecord savedRecord = recordRepository.save(record);
+            recognitionManager.registerAttendance(request.getSessionId(), request.getUserId(), savedRecord.getStatus());
             return mapToRecordDTO(savedRecord);
         } catch (Exception e) {
             e.printStackTrace();

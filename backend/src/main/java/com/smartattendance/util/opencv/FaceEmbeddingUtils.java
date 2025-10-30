@@ -16,8 +16,12 @@ import org.opencv.dnn.Net;
 public class FaceEmbeddingUtils {
     // Convert a single face Mat to embedding
     public static float[] faceToEmbedding(Mat face, Net net) {
-        Mat blob = Dnn.blobFromImage(face, 1.0 / 255.0, new Size(112, 112),
-                new Scalar(0.5, 0.5, 0.5), false, false);
+        // ArcFace ResNet100 preprocessing:
+        // Input: 112x112 RGB image
+        // Normalization: (pixel - 127.5) / 128.0
+        // This gives range approximately [-1, 1]
+        Mat blob = Dnn.blobFromImage(face, 1.0 / 128.0, new Size(112, 112),
+                new Scalar(127.5, 127.5, 127.5), true, false);
         net.setInput(blob);
         Mat output = net.forward();
         return normalizeVector(matToFloatArray(output));

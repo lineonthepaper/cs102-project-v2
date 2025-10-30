@@ -1,16 +1,22 @@
 package com.smartattendance.controller;
 
 import com.smartattendance.dto.request.attendance.CreateAttendanceSessionRequest;
+import com.smartattendance.dto.request.attendance.FaceScanRequest;
 import com.smartattendance.dto.request.attendance.MarkAttendanceRequest;
 import com.smartattendance.dto.response.attendance.AttendanceRecordResponseDTO;
 import com.smartattendance.dto.response.attendance.AttendanceSessionResponseDTO;
+import com.smartattendance.dto.response.attendance.FaceScanResponseDTO;
+import com.smartattendance.exception.InvalidRequestException;
 import com.smartattendance.service.AttendanceService;
+import com.smartattendance.service.SessionRecognitionManager;
+import jakarta.validation.Valid;
+
+import java.util.Base64;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/attendance")
@@ -18,9 +24,12 @@ import java.util.Map;
 public class AttendanceController {
 
     private final AttendanceService attendanceService;
+    private final SessionRecognitionManager recognitionManager;
 
-    public AttendanceController(AttendanceService attendanceService) {
+    public AttendanceController(AttendanceService attendanceService,
+                                SessionRecognitionManager recognitionManager) {
         this.attendanceService = attendanceService;
+        this.recognitionManager = recognitionManager;
     }
 
     @GetMapping("/sessions")
@@ -54,6 +63,28 @@ public class AttendanceController {
     public ResponseEntity<?> markAttendance(@RequestBody MarkAttendanceRequest request) {
         AttendanceRecordResponseDTO record = attendanceService.markAttendance(request);
         return ResponseEntity.ok(record);
+    }
+
+    @PostMapping("/sessions/{id}/scan")
+    public ResponseEntity<FaceScanResponseDTO> scanFace(
+            @PathVariable Long id,
+            @Valid @RequestBody FaceScanRequest request) {
+
+        byte[] imageBytes = decodeBase64(request.getImageData());
+        FaceScanResponseDTO response = recognitionManager.scanFace(id, imageBytes);
+        return ResponseEntity.ok(response);
+    }
+
+    private byte[] decodeBase64(String imageData) {
+        if (imageData == null || imageData.isBlank()) {
+            throw new InvalidRequestException("Image data cannot be empty");
+        }
+        String sanitized = imageData.contains(",") ? imageData.substring(imageData.indexOf(',') + 1) : imageData;
+        try {
+            return Base64.getDecoder().decode(sanitized);
+        } catch (IllegalArgumentException ex) {
+            throw new InvalidRequestException("Invalid base64 image data");
+        }
     }
 }
 

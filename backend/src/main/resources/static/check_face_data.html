@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Data Checker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .student-card {
+            border: 2px solid #333;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .student-header {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+        .student-info {
+            color: #666;
+            margin-bottom: 15px;
+        }
+        .face-images {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .face-image {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .face-image img {
+            max-width: 200px;
+            max-height: 200px;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .image-label {
+            font-size: 12px;
+            color: #999;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Face Recognition Data Checker</h1>
+    <p>This tool shows which face images are stored for each student.</p>
+    
+    <div id="loading" class="loading">Loading student data...</div>
+    <div id="students"></div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8080';
+        
+        async function loadStudents() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/students?summary=false`);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch students');
+                }
+                
+                const students = await response.json();
+                const studentsWithFaces = students.filter(s => s.faceImages && s.faceImages.length > 0);
+                
+                document.getElementById('loading').style.display = 'none';
+                
+                if (studentsWithFaces.length === 0) {
+                    document.getElementById('students').innerHTML = '<p class="error">No students with face images found.</p>';
+                    return;
+                }
+                
+                const container = document.getElementById('students');
+                container.innerHTML = '';
+                
+                studentsWithFaces.forEach(student => {
+                    const card = document.createElement('div');
+                    card.className = 'student-card';
+                    
+                    card.innerHTML = `
+                        <div class="student-header">${student.firstName} ${student.lastName}</div>
+                        <div class="student-info">
+                            <strong>ID:</strong> ${student.displayId || student.id}<br>
+                            <strong>Email:</strong> ${student.email}<br>
+                            <strong>Face Images:</strong> ${student.faceImages.length}
+                        </div>
+                        <div class="face-images" id="images-${student.id}"></div>
+                    `;
+                    
+                    container.appendChild(card);
+                    
+                    const imagesContainer = document.getElementById(`images-${student.id}`);
+                    student.faceImages.forEach((imageData, index) => {
+                        const imageDiv = document.createElement('div');
+                        imageDiv.className = 'face-image';
+                        
+                        const img = document.createElement('img');
+                        // Handle both base64 with and without data URL prefix
+                        const imageSrc = imageData.startsWith('data:') 
+                            ? imageData 
+                            : `data:image/jpeg;base64,${imageData}`;
+                        img.src = imageSrc;
+                        img.alt = `Face ${index + 1}`;
+                        
+                        const label = document.createElement('div');
+                        label.className = 'image-label';
+                        label.textContent = `Image ${index + 1}`;
+                        
+                        imageDiv.appendChild(img);
+                        imageDiv.appendChild(label);
+                        imagesContainer.appendChild(imageDiv);
+                    });
+                });
+                
+            } catch (error) {
+                console.error('Error loading students:', error);
+                document.getElementById('loading').innerHTML = `<p class="error">Error: ${error.message}</p>`;
+            }
+        }
+        
+        // Load students when page loads
+        loadStudents();
+    </script>
+</body>
+</html>
+

@@ -47,3 +47,7 @@ scripts/archive/
 
 # java built classes
 *.class
+
+# Large model files (too big for GitHub - download separately)
+backend/src/main/resources/models/facenet.onnx
+backend/src/main/resources/models/arcface*.onnx

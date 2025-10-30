@@ -11,6 +11,7 @@ import com.smartattendance.repository.AttendanceRecordRepository;
 import com.smartattendance.repository.AttendanceSessionRepository;
 import com.smartattendance.repository.SectionEnrollmentRepository;
 import com.smartattendance.repository.SectionRepository;
+import com.smartattendance.service.strategy.AttendanceStrategyFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +27,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,6 +44,12 @@ class AttendanceServiceTest {
 
     @Mock
     private SectionEnrollmentRepository enrollmentRepository;
+
+    @Mock
+    private AttendanceStrategyFactory strategyFactory;
+
+    @Mock
+    private SessionRecognitionManager recognitionManager;
 
     @InjectMocks
     private AttendanceService attendanceService;
@@ -64,6 +72,8 @@ class AttendanceServiceTest {
         testRecord.setSessionId(1L);
         testRecord.setUserId("S0000001");
         testRecord.setStatus(AttendanceStatus.PRESENT);
+
+        when(strategyFactory.getStrategy(anyString())).thenThrow(new IllegalArgumentException("Not implemented in tests"));
     }
 
     @Test

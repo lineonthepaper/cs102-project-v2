@@ -489,19 +489,60 @@ function Students() {
     setFaceImages((prev) => prev.filter((image) => image.id !== imageId))
   }
 
-  const openManageEnrollmentModal = (student) => {
-    const initialSelections = {}
-    const expanded = {}
-    ;(student.enrollments || []).forEach((enrollment) => {
-      const courseId = enrollment.sections?.courses?.id || null
-      if (courseId) {
-        initialSelections[courseId] = enrollment.section_id
+  const openManageEnrollmentModal = async (student) => {
+    try {
+      // Fetch enrollments from the database since summary=true doesn't include them
+      const { data: enrollments, error } = await supabase
+        .from('section_enrollments')
+        .select(`
+          user_id,
+          section_id,
+          is_active,
+          enrolled_at,
+          sections:section_id (
+            id,
+            section_code,
+            year,
+            semester,
+            meeting_day,
+            start_time,
+            end_time,
+            location,
+            course_id,
+            courses:course_id (
+              id,
+              code,
+              title
+            )
+          )
+        `)
+        .eq('user_id', student.id)
+        .eq('is_active', true)
+
+      if (error) {
+        console.error('Error fetching enrollments:', error)
+        throw error
       }
-    })
-    setEnrollmentSelections(initialSelections)
-    setExpandedCourses(expanded)
-    setManageEnrollmentStudent(student)
-    setShowManageEnrollmentModal(true)
+
+      // Build initial selections from fetched enrollments
+      const initialSelections = {}
+      const expanded = {}
+      ;(enrollments || []).forEach((enrollment) => {
+        const courseId = enrollment.sections?.courses?.id || enrollment.sections?.course_id
+        if (courseId) {
+          initialSelections[courseId] = enrollment.section_id
+        }
+      })
+
+      setEnrollmentSelections(initialSelections)
+      setExpandedCourses(expanded)
+      // Update student with fetched enrollments
+      setManageEnrollmentStudent({ ...student, enrollments })
+      setShowManageEnrollmentModal(true)
+    } catch (error) {
+      console.error('Failed to load enrollments:', error)
+      alert('Failed to load enrollment data. Please try again.')
+    }
   }
 
   const closeManageEnrollmentModal = () => {

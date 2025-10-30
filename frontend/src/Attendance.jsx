@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabase'
 
 const API_BASE_URL = 'http://localhost:8080'
+const SCAN_SKIP_DURATION_MS = 8000
 
 function Attendance() {
   const navigate = useNavigate()
@@ -29,6 +30,18 @@ function Attendance() {
   const [students, setStudents] = useState([])
   const [filteredStudents, setFilteredStudents] = useState([])
   const [attendanceRecords, setAttendanceRecords] = useState({})
+
+  // Scanner State
+  const [showScannerModal, setShowScannerModal] = useState(false)
+  const [scannerMessage, setScannerMessage] = useState('Align the student within the frame to begin scanning.')
+  const [scannerError, setScannerError] = useState('')
+  const [recognizedCandidate, setRecognizedCandidate] = useState(null)
+
+  const videoRef = useRef(null)
+  const canvasRef = useRef(null)
+  const scanIntervalRef = useRef(null)
+  const isSendingFrameRef = useRef(false)
+  const skippedStudentsRef = useRef(new Map())
 
   // Search and Filter State (Sessions)
   const [searchTerm, setSearchTerm] = useState('')
@@ -58,6 +71,19 @@ function Attendance() {
   useEffect(() => {
     filterStudents()
   }, [students, markingSearchTerm, statusFilterMarking, attendanceRecords])
+
+  useEffect(() => {
+    if (!showScannerModal) {
+      stopCamera()
+      return
+    }
+
+    startCamera()
+
+    return () => {
+      stopCamera()
+    }
+  }, [showScannerModal])
 
   const fetchInitialData = async () => {
     try {
@@ -148,6 +174,207 @@ function Attendance() {
     }
 
     setFilteredStudents(filtered)
+  }
+
+  const openScannerModal = () => {
+    if (!selectedSession) return
+    setScannerError('')
+    setScannerMessage('Align the student within the frame to begin scanning.')
+    setRecognizedCandidate(null)
+    setShowScannerModal(true)
+  }
+
+  const closeScannerModal = () => {
+    setShowScannerModal(false)
+    setRecognizedCandidate(null)
+    setScannerMessage('Align the student within the frame to begin scanning.')
+    setScannerError('')
+  }
+
+  const startCamera = async () => {
+    if (!showScannerModal) return
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setScannerError('Camera access is not supported in this browser.')
+      setShowScannerModal(false)
+      return
+    }
+    setScannerMessage('Accessing camera...')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
+      }
+      setScannerMessage('Scanning for enrolled students...')
+      startFrameLoop()
+    } catch (error) {
+      console.error('Unable to access camera:', error)
+      setScannerError('Unable to access camera. Please check permissions and try again.')
+      setShowScannerModal(false)
+    }
+  }
+
+  const stopCamera = () => {
+    stopFrameLoop()
+    isSendingFrameRef.current = false
+    if (videoRef.current && videoRef.current.srcObject) {
+      const tracks = videoRef.current.srcObject.getTracks()
+      tracks.forEach(track => track.stop())
+      videoRef.current.srcObject = null
+    }
+  }
+
+  const startFrameLoop = () => {
+    if (!showScannerModal || !selectedSession) {
+      return
+    }
+    stopFrameLoop()
+    scanIntervalRef.current = setInterval(captureAndSendFrame, 1500)
+  }
+
+  const stopFrameLoop = () => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current)
+      scanIntervalRef.current = null
+    }
+  }
+
+  const shouldSkipStudent = (studentId) => {
+    if (!studentId) return false
+    const lastSeen = skippedStudentsRef.current.get(studentId)
+    if (!lastSeen) return false
+    if (Date.now() - lastSeen > SCAN_SKIP_DURATION_MS) {
+      skippedStudentsRef.current.delete(studentId)
+      return false
+    }
+    return true
+  }
+
+  const recordSkipForStudent = (studentId) => {
+    if (!studentId) return
+    skippedStudentsRef.current.set(studentId, Date.now())
+  }
+
+  const captureAndSendFrame = async () => {
+    if (!selectedSession || !videoRef.current || !canvasRef.current) {
+      return
+    }
+
+    if (isSendingFrameRef.current || recognizedCandidate) {
+      return
+    }
+
+    const video = videoRef.current
+    if (video.readyState < 2) {
+      return
+    }
+
+    const canvas = canvasRef.current
+    const context = canvas.getContext('2d')
+    canvas.width = video.videoWidth || 640
+    canvas.height = video.videoHeight || 480
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+    const imageData = canvas.toDataURL('image/jpeg', 0.9)
+    isSendingFrameRef.current = true
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/attendance/sessions/${selectedSession.id}/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageData })
+      })
+
+      if (!response.ok) {
+        throw new Error('Scanner request failed')
+      }
+
+      const result = await response.json()
+      handleScanResponse(result)
+    } catch (error) {
+      console.error('Face scan error:', error)
+      setScannerError('Unable to process the camera feed. Please adjust the camera and try again.')
+    } finally {
+      isSendingFrameRef.current = false
+    }
+  }
+
+  const handleScanResponse = (result) => {
+    if (!result) {
+      return
+    }
+
+    setScannerError('')
+
+    if (result.alreadyMarked) {
+      setScannerMessage(result.message || 'Student already marked present or late.')
+      if (result.student?.id) {
+        recordSkipForStudent(result.student.id)
+      }
+      return
+    }
+
+    if (!result.matched) {
+      if (result.message) {
+        setScannerMessage(result.message)
+      }
+      return
+    }
+
+    const student = result.student
+    if (!student) {
+      return
+    }
+
+    if (shouldSkipStudent(student.id)) {
+      return
+    }
+
+    stopFrameLoop()
+    setScannerError('')
+    setScannerMessage('Match found. Confirm the student details below.')
+    setRecognizedCandidate({
+      student,
+      similarity: result.similarity,
+      recommendedStatus: result.recommendedStatus,
+      recommendedCheckInTime: result.recommendedCheckInTime,
+      message: result.message || ''
+    })
+  }
+
+  const handleScannerAccept = async () => {
+    if (!recognizedCandidate) return
+
+    const { student, recommendedStatus, recommendedCheckInTime } = recognizedCandidate
+    const status = recommendedStatus || calculateStatus(new Date(), selectedSession.session_date, selectedSession.scheduled_start_time)
+    const checkInTime = recommendedCheckInTime || new Date().toISOString()
+
+    try {
+      setScannerMessage(`Recording attendance for ${student.displayId || student.id}...`)
+      await markAttendance(student.id, status, '', checkInTime)
+      recordSkipForStudent(student.id)
+      setScannerMessage(`${student.displayId || student.id} marked as ${status}. Ready for the next student.`)
+      setRecognizedCandidate(null)
+      setScannerError('')
+    } catch (error) {
+      console.error('Failed to record attendance from scanner:', error)
+      setScannerError('Unable to record attendance automatically. Please try manual check-in.')
+      setScannerMessage('Ready to scan again.')
+      recordSkipForStudent(student.id)
+      setRecognizedCandidate(null)
+    } finally {
+      startFrameLoop()
+    }
+  }
+
+  const handleScannerReject = () => {
+    if (!recognizedCandidate) return
+    const { student } = recognizedCandidate
+    recordSkipForStudent(student.id)
+    setRecognizedCandidate(null)
+    setScannerMessage('Match dismissed. Continuing to scan...')
+    setScannerError('')
+    startFrameLoop()
   }
 
   const getSortIcon = (column) => {
@@ -328,6 +555,7 @@ function Attendance() {
 
   const closeMarkingModal = () => {
     setShowMarkingModal(false)
+    setShowScannerModal(false)
     setSelectedSession(null)
     setStudents([])
     setFilteredStudents([])
@@ -655,9 +883,20 @@ function Attendance() {
                   })} • {selectedSession.scheduled_start_time} - {selectedSession.scheduled_end_time}
                 </p>
               </div>
-              <button onClick={closeMarkingModal} className="close-button">
-                ✕
-              </button>
+              <div className="modal-header-actions">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openScannerModal()
+                  }}
+                  className="btn btn-small btn-action"
+                >
+                  Record
+                </button>
+                <button onClick={closeMarkingModal} className="close-button">
+                  ✕
+                </button>
+              </div>
             </div>
 
             <div className="modal-body">
@@ -812,6 +1051,56 @@ function Attendance() {
                 </tbody>
               </table>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showScannerModal && (
+        <div className="modal-overlay" onClick={closeScannerModal}>
+          <div className="modal-content scanner-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Attendance Scanner</h2>
+              <div className="modal-header-actions">
+                <button onClick={closeScannerModal} className="close-button">✕</button>
+              </div>
+            </div>
+
+            <div className="scanner-body">
+              <div className="scanner-video-wrapper">
+                <video ref={videoRef} className="scanner-video" autoPlay playsInline muted />
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
+              </div>
+
+              <div className="scanner-status">
+                <p>{scannerMessage}</p>
+                {scannerError && <p className="scanner-error">{scannerError}</p>}
+              </div>
+
+              {recognizedCandidate && (
+                <div className="scanner-confirmation">
+                  <h3>Confirm Student</h3>
+                  <p><strong>ID:</strong> {recognizedCandidate.student.displayId || recognizedCandidate.student.id}</p>
+                  <p><strong>Name:</strong> {recognizedCandidate.student.firstName} {recognizedCandidate.student.lastName}</p>
+                  <p><strong>Email:</strong> {recognizedCandidate.student.email}</p>
+                  <p><strong>Confidence:</strong> {Math.round((recognizedCandidate.similarity || 0) * 100)}%</p>
+                  {recognizedCandidate.recommendedStatus && (
+                    <p><strong>Suggested Status:</strong> {recognizedCandidate.recommendedStatus}</p>
+                  )}
+                  {recognizedCandidate.recommendedCheckInTime && (
+                    <p><strong>Suggested Check-in:</strong> {new Date(recognizedCandidate.recommendedCheckInTime).toLocaleTimeString('en-SG', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit'
+                    })}</p>
+                  )}
+
+                  <div className="scanner-confirmation-actions">
+                    <button onClick={handleScannerAccept} className="btn btn-small btn-primary">Accept</button>
+                    <button onClick={handleScannerReject} className="btn btn-small btn-secondary">Reject</button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

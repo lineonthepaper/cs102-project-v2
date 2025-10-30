@@ -104,5 +104,6 @@ CREATE TABLE public.users (
   enabled boolean NOT NULL DEFAULT true,
   created_at timestamp without time zone NOT NULL DEFAULT timezone('utc'::text, now()),
   updated_at timestamp without time zone,
+  face_images jsonb,
   CONSTRAINT users_pkey PRIMARY KEY (id)
 );
