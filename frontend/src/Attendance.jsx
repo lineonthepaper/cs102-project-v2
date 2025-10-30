@@ -37,11 +37,14 @@ function Attendance() {
   const [scannerError, setScannerError] = useState('')
   const [recognizedCandidate, setRecognizedCandidate] = useState(null)
   const [isScannerActive, setIsScannerActive] = useState(false)
+  const [isFaceDetected, setIsFaceDetected] = useState(false)
 
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const scanIntervalRef = useRef(null)
+  const faceDetectionIntervalRef = useRef(null)
   const isSendingFrameRef = useRef(false)
+  const isCheckingFaceRef = useRef(false)
   const skippedStudentsRef = useRef(new Map())
   const isScanningRef = useRef(false)
 
@@ -77,12 +80,16 @@ function Attendance() {
   useEffect(() => {
     if (!showScannerModal) {
       stopCamera()
+      stopFaceDetection()
       return
     }
     // Always show live preview when modal opens (no scanning yet)
     startPreview()
+    // Start face detection loop for button enabling
+    startFaceDetection()
     return () => {
       stopCamera()
+      stopFaceDetection()
     }
   }, [showScannerModal])
 
@@ -180,10 +187,11 @@ function Attendance() {
   const openScannerModal = () => {
     if (!selectedSession) return
     setScannerError('')
-    setScannerMessage('Click Start to begin scanning.')
+    setScannerMessage('Waiting for face detection...')
     setRecognizedCandidate(null)
     setShowScannerModal(true)
     setIsScannerActive(false)
+    setIsFaceDetected(false)
   }
 
   const closeScannerModal = () => {
@@ -193,11 +201,13 @@ function Attendance() {
       tracks.forEach(track => track.stop())
       videoRef.current.srcObject = null
     }
+    stopFaceDetection()
     setShowScannerModal(false)
     setRecognizedCandidate(null)
-    setScannerMessage('Click Start to begin scanning.')
+    setScannerMessage('Waiting for face detection...')
     setScannerError('')
     setIsScannerActive(false)
+    setIsFaceDetected(false)
   }
 
   const startPreview = async () => {
@@ -213,7 +223,7 @@ function Attendance() {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
       }
-      setScannerMessage('Click Start to begin scanning.')
+      setScannerMessage('Waiting for face detection...')
     } catch (error) {
       console.error('Unable to access camera:', error)
       setScannerError('Unable to access camera. Please check permissions and try again.')
@@ -221,8 +231,81 @@ function Attendance() {
     }
   }
 
+  const startFaceDetection = () => {
+    if (faceDetectionIntervalRef.current) return
+    faceDetectionIntervalRef.current = setInterval(checkForFace, 500) // Check every 500ms
+  }
+
+  const stopFaceDetection = () => {
+    if (faceDetectionIntervalRef.current) {
+      clearInterval(faceDetectionIntervalRef.current)
+      faceDetectionIntervalRef.current = null
+    }
+    isCheckingFaceRef.current = false
+  }
+
+  const checkForFace = async () => {
+    // Don't check if already scanning or if already checking
+    if (isScanningRef.current || isCheckingFaceRef.current || !showScannerModal) {
+      return
+    }
+
+    if (!videoRef.current || !canvasRef.current) {
+      return
+    }
+
+    const video = videoRef.current
+    if (video.readyState < 2) {
+      return
+    }
+
+    isCheckingFaceRef.current = true
+
+    try {
+      const canvas = canvasRef.current
+      const context = canvas.getContext('2d')
+      const srcW = video.videoWidth || 640
+      const srcH = video.videoHeight || 480
+      const targetW = Math.min(480, srcW)
+      const scale = targetW / srcW
+      const targetH = Math.round(srcH * scale)
+      canvas.width = targetW
+      canvas.height = targetH
+      context.drawImage(video, 0, 0, targetW, targetH)
+
+      const imageData = canvas.toDataURL('image/jpeg', 0.5)
+
+      // Simple face detection check
+      const response = await fetch(`${API_BASE_URL}/api/face/detect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageData })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        const faceDetected = result.faceDetected || false
+        setIsFaceDetected(faceDetected)
+        
+        if (faceDetected) {
+          setScannerMessage('Face detected. Click Start to begin scanning.')
+        } else {
+          setScannerMessage('Waiting for face detection...')
+        }
+      }
+    } catch (error) {
+      console.error('Face detection check error:', error)
+      // Don't show errors for face detection, just keep trying
+    } finally {
+      isCheckingFaceRef.current = false
+    }
+  }
+
   const startCamera = async () => {
     if (!showScannerModal) return
+    
+    // Stop face detection when actual scanning starts
+    stopFaceDetection()
     
     // Ensure camera is running (restart if needed)
     if (!videoRef.current?.srcObject || videoRef.current.paused) {
@@ -387,6 +470,18 @@ function Attendance() {
     })
   }
 
+  const resetScannerForNextStudent = () => {
+    // Reset states without closing modal
+    setRecognizedCandidate(null)
+    setScannerError('')
+    setIsScannerActive(false)
+    setIsFaceDetected(false)
+    setScannerMessage('Waiting for face detection...')
+    
+    // Restart face detection loop
+    startFaceDetection()
+  }
+
   const handleScannerAccept = async () => {
     if (!recognizedCandidate) return
 
@@ -398,19 +493,29 @@ function Attendance() {
       setScannerMessage(`Recording attendance for ${student.displayId || student.id}...`)
       await markAttendance(student.id, status, '', checkInTime)
       recordSkipForStudent(student.id)
-      setScannerMessage(`✓ ${student.displayId || student.id} marked as ${status}. Click Start to scan next student.`)
+      
+      // Clear candidate immediately to hide profile card, show success message
       setRecognizedCandidate(null)
+      setScannerMessage(`✓ ${student.displayId || student.id} marked as ${status}`)
       setScannerError('')
+      
+      // Reset for next student after a short delay
+      setTimeout(() => {
+        resetScannerForNextStudent()
+      }, 1500)
     } catch (error) {
       console.error('Failed to record attendance from scanner:', error)
-      setScannerError('Unable to record attendance. Please try manual check-in.')
-      setScannerMessage('Click Start to try again.')
-      recordSkipForStudent(student.id)
+      
+      // Clear candidate and show error
       setRecognizedCandidate(null)
-    } finally {
-      // Stop scanning completely after accept/reject
-      stopCamera()
-      setIsScannerActive(false)
+      setScannerError('Unable to record attendance. Please try manual check-in.')
+      setScannerMessage('Error occurred. Ready to scan next student.')
+      recordSkipForStudent(student.id)
+      
+      // Reset for next student after showing error
+      setTimeout(() => {
+        resetScannerForNextStudent()
+      }, 2000)
     }
   }
 
@@ -418,11 +523,9 @@ function Attendance() {
     if (!recognizedCandidate) return
     const { student } = recognizedCandidate
     recordSkipForStudent(student.id)
-    setRecognizedCandidate(null)
-    setScannerMessage('✗ Match rejected. Click Start to scan again.')
-    setScannerError('')
-    stopCamera()
-    setIsScannerActive(false)
+    
+    // Immediately reset for next student without delay or message
+    resetScannerForNextStudent()
   }
 
   const getSortIcon = (column) => {
@@ -1135,15 +1238,17 @@ function Attendance() {
               fontWeight: 700,
               fontSize: '0.98em',
               padding: '10px 28px',
-              background: '#000',
+              background: isFaceDetected ? '#000' : '#ccc',
               color: '#fff',
-              border: '1px solid #000',
+              border: isFaceDetected ? '1px solid #000' : '1px solid #ccc',
               borderRadius: 6,
               letterSpacing: '0.02em',
-              cursor: 'pointer',
+              cursor: isFaceDetected ? 'pointer' : 'not-allowed',
+              opacity: isFaceDetected ? 1 : 0.6,
             }}
             className="btn"
             onClick={startCamera}
+            disabled={!isFaceDetected}
           >
             Start
           </button>
