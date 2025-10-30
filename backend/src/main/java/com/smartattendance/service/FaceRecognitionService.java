@@ -21,10 +21,6 @@ import com.smartattendance.util.opencv.FaceRecognitionUtils;
 @Service
 public class FaceRecognitionService {
 
-    // ArcFace threshold is lower than SFace because it produces different embedding spaces
-    // Typical ArcFace threshold: 0.4-0.6 (lower = stricter matching)
-    private static final double DEFAULT_SIMILARITY_THRESHOLD = 0.88;
-
     @Value("${face.similarityThreshold:0.88}")
     private double similarityThreshold;
 
@@ -59,19 +55,18 @@ public class FaceRecognitionService {
         ensureModelsLoaded();
 
         if (knownEmbeddings == null || knownEmbeddings.isEmpty()) {
+            System.out.println("[RECOGNITION] No known embeddings provided");
             return Optional.empty();
         }
 
-        System.out.println("[DEBUG] Computing embedding for live camera frame...");
         Optional<float[]> embeddingOptional = computeEmbedding(imageBytes);
         if (embeddingOptional.isEmpty()) {
-            System.out.println("[DEBUG] Failed to compute embedding for live frame");
+            System.out.println("[RECOGNITION] Failed to compute embedding from image");
             return Optional.empty();
         }
 
         float[] liveEmbedding = embeddingOptional.get();
-        System.out.println("[DEBUG] Live embedding computed: " + liveEmbedding.length + " dimensions, " +
-                         "first 3 values: [" + liveEmbedding[0] + ", " + liveEmbedding[1] + ", " + liveEmbedding[2] + "]");
+        System.out.println("[RECOGNITION] Embedding computed: " + liveEmbedding.length + " dimensions");
 
         ComparisonResult result = FaceRecognitionUtils.findBestMatch(
                 liveEmbedding,
@@ -94,11 +89,15 @@ public class FaceRecognitionService {
         if (knownEmbeddings == null || knownEmbeddings.isEmpty()) {
             return Optional.empty();
         }
+        
         Optional<float[]> embeddingOptional = computeEmbedding(imageBytes);
         if (embeddingOptional.isEmpty()) {
             return Optional.empty();
         }
+        
         float[] liveEmbedding = embeddingOptional.get();
+        System.out.println("[RECOGNITION] Embedding computed: " + liveEmbedding.length + " dimensions");
+        
         ComparisonResult best = FaceRecognitionUtils.findTopCandidate(liveEmbedding, knownEmbeddings);
         return Optional.ofNullable(best);
     }
@@ -132,11 +131,15 @@ public class FaceRecognitionService {
 
         Mat detectedFace = FaceDetectionUtils.getFaceFromImageBytes(imageBytes, faceDetector);
         if (detectedFace == null) {
+            System.out.println("[EMBEDDING] Face detection failed - cannot compute embedding");
             return Optional.empty();
         }
 
         try {
-            return Optional.of(FaceEmbeddingUtils.faceToEmbedding(detectedFace, recognitionNet));
+            System.out.println("[EMBEDDING] Computing embedding from 112x112 face region...");
+            float[] embedding = FaceEmbeddingUtils.faceToEmbedding(detectedFace, recognitionNet);
+            System.out.println("[EMBEDDING] Successfully computed " + embedding.length + "-dimensional embedding");
+            return Optional.of(embedding);
         } finally {
             detectedFace.release();
         }

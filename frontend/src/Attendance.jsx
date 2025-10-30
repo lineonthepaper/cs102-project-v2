@@ -33,15 +33,17 @@ function Attendance() {
 
   // Scanner State
   const [showScannerModal, setShowScannerModal] = useState(false)
-  const [scannerMessage, setScannerMessage] = useState('Align the student within the frame to begin scanning.')
+  const [scannerMessage, setScannerMessage] = useState('Click Start to begin scanning.')
   const [scannerError, setScannerError] = useState('')
   const [recognizedCandidate, setRecognizedCandidate] = useState(null)
+  const [isScannerActive, setIsScannerActive] = useState(false)
 
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const scanIntervalRef = useRef(null)
   const isSendingFrameRef = useRef(false)
   const skippedStudentsRef = useRef(new Map())
+  const isScanningRef = useRef(false)
 
   // Search and Filter State (Sessions)
   const [searchTerm, setSearchTerm] = useState('')
@@ -77,9 +79,8 @@ function Attendance() {
       stopCamera()
       return
     }
-
-    startCamera()
-
+    // Always show live preview when modal opens (no scanning yet)
+    startPreview()
     return () => {
       stopCamera()
     }
@@ -179,34 +180,40 @@ function Attendance() {
   const openScannerModal = () => {
     if (!selectedSession) return
     setScannerError('')
-    setScannerMessage('Align the student within the frame to begin scanning.')
+    setScannerMessage('Click Start to begin scanning.')
     setRecognizedCandidate(null)
     setShowScannerModal(true)
+    setIsScannerActive(false)
   }
 
   const closeScannerModal = () => {
+    // Stop camera completely when closing modal
+    if (videoRef.current && videoRef.current.srcObject) {
+      const tracks = videoRef.current.srcObject.getTracks()
+      tracks.forEach(track => track.stop())
+      videoRef.current.srcObject = null
+    }
     setShowScannerModal(false)
     setRecognizedCandidate(null)
-    setScannerMessage('Align the student within the frame to begin scanning.')
+    setScannerMessage('Click Start to begin scanning.')
     setScannerError('')
+    setIsScannerActive(false)
   }
 
-  const startCamera = async () => {
+  const startPreview = async () => {
     if (!showScannerModal) return
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setScannerError('Camera access is not supported in this browser.')
       setShowScannerModal(false)
       return
     }
-    setScannerMessage('Accessing camera...')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20 } } })
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
       }
-      setScannerMessage('Scanning for enrolled students...')
-      startFrameLoop()
+      setScannerMessage('Click Start to begin scanning.')
     } catch (error) {
       console.error('Unable to access camera:', error)
       setScannerError('Unable to access camera. Please check permissions and try again.')
@@ -214,14 +221,27 @@ function Attendance() {
     }
   }
 
+  const startCamera = async () => {
+    if (!showScannerModal) return
+    
+    // Ensure camera is running (restart if needed)
+    if (!videoRef.current?.srcObject || videoRef.current.paused) {
+      await startPreview()
+    }
+    
+    setScannerMessage('Scanning faces... Please look at the camera.')
+    setIsScannerActive(true)
+    isScanningRef.current = true
+    startFrameLoop()
+  }
+
   const stopCamera = () => {
     stopFrameLoop()
     isSendingFrameRef.current = false
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = videoRef.current.srcObject.getTracks()
-      tracks.forEach(track => track.stop())
-      videoRef.current.srcObject = null
-    }
+    isScanningRef.current = false
+    setIsScannerActive(false)
+    // Don't stop the video stream - keep preview running
+    // Only stop the scanning loop
   }
 
   const startFrameLoop = () => {
@@ -256,11 +276,16 @@ function Attendance() {
   }
 
   const captureAndSendFrame = async () => {
+    // Don't send frames if not actively scanning or if we already have a match
+    if (!isScanningRef.current || recognizedCandidate) {
+      return
+    }
+    
     if (!selectedSession || !videoRef.current || !canvasRef.current) {
       return
     }
 
-    if (isSendingFrameRef.current || recognizedCandidate) {
+    if (isSendingFrameRef.current) {
       return
     }
 
@@ -321,7 +346,19 @@ function Attendance() {
 
     if (!result.matched) {
       if (result.message) {
-        setScannerMessage(result.message)
+        // Show backend messages but keep it friendly
+        const msg = result.message
+        if (msg.toLowerCase().includes('scanning')) {
+          setScannerMessage('Scanning... Keep your face in view.')
+        } else if (msg.toLowerCase().includes('no valid frames') || msg.toLowerCase().includes('no clear match')) {
+          setScannerMessage('No match found. Click Start to try again.')
+          stopCamera()
+        } else if (msg.toLowerCase().includes('please')) {
+          setScannerMessage(msg)
+          stopCamera()
+        } else {
+          setScannerMessage(msg)
+        }
       }
       return
     }
@@ -335,7 +372,10 @@ function Attendance() {
       return
     }
 
+    // Stop scanning completely when match found
     stopFrameLoop()
+    isScanningRef.current = false
+    setIsScannerActive(false)
     setScannerError('')
     setScannerMessage('Match found. Confirm the student details below.')
     setRecognizedCandidate({
@@ -358,17 +398,19 @@ function Attendance() {
       setScannerMessage(`Recording attendance for ${student.displayId || student.id}...`)
       await markAttendance(student.id, status, '', checkInTime)
       recordSkipForStudent(student.id)
-      setScannerMessage(`${student.displayId || student.id} marked as ${status}. Ready for the next student.`)
+      setScannerMessage(`✓ ${student.displayId || student.id} marked as ${status}. Click Start to scan next student.`)
       setRecognizedCandidate(null)
       setScannerError('')
     } catch (error) {
       console.error('Failed to record attendance from scanner:', error)
-      setScannerError('Unable to record attendance automatically. Please try manual check-in.')
-      setScannerMessage('Ready to scan again.')
+      setScannerError('Unable to record attendance. Please try manual check-in.')
+      setScannerMessage('Click Start to try again.')
       recordSkipForStudent(student.id)
       setRecognizedCandidate(null)
     } finally {
-      startFrameLoop()
+      // Stop scanning completely after accept/reject
+      stopCamera()
+      setIsScannerActive(false)
     }
   }
 
@@ -377,9 +419,10 @@ function Attendance() {
     const { student } = recognizedCandidate
     recordSkipForStudent(student.id)
     setRecognizedCandidate(null)
-    setScannerMessage('Match dismissed. Continuing to scan...')
+    setScannerMessage('✗ Match rejected. Click Start to scan again.')
     setScannerError('')
-    startFrameLoop()
+    stopCamera()
+    setIsScannerActive(false)
   }
 
   const getSortIcon = (column) => {
@@ -659,21 +702,17 @@ function Attendance() {
   const calculateStatus = (checkinDateTime, sessionDate, scheduledStartTime) => {
     if (!checkinDateTime || !sessionDate || !scheduledStartTime) return 'PRESENT'
 
-    // Parse the check-in date/time (SGT)
-    const checkin = new Date(checkinDateTime)
-    
-    // Parse session date and time (SGT)
-    const sessionDateTime = new Date(`${sessionDate}T${scheduledStartTime}`)
-    
-    // Calculate difference in minutes
-    const diffMinutes = (checkin - sessionDateTime) / 1000 / 60
-    
-    console.log('Checkin DateTime:', checkin.toISOString())
-    console.log('Session DateTime:', sessionDateTime.toISOString())
-    console.log('Difference (minutes):', diffMinutes)
+    // Parse/check in SGT
+    const checkin = new Date(new Date(checkinDateTime).toLocaleString('en-US', { timeZone: 'Asia/Singapore' }))
+    const sessionDateTime = new Date(`${sessionDate}T${scheduledStartTime}+08:00`)
 
-    // If checking in more than 15 minutes after scheduled start, mark as LATE
-    // If checking in before or within 15 minutes of scheduled start, mark as PRESENT
+    // If the date (SGT) of checkin does NOT match sessionDate, always return present
+    const pad2 = (x) => x.toString().padStart(2, '0')
+    const checkinYMD = `${checkin.getFullYear()}-${pad2(checkin.getMonth()+1)}-${pad2(checkin.getDate())}`
+    if (checkinYMD !== sessionDate) return 'PRESENT'
+
+    // If sessionDate matches, check for late
+    const diffMinutes = (checkin - sessionDateTime) / 1000 / 60
     return diffMinutes >= 15 ? 'LATE' : 'PRESENT'
   }
 
@@ -1063,47 +1102,102 @@ function Attendance() {
 
       {showScannerModal && (
         <div className="modal-overlay" onClick={closeScannerModal}>
-          <div className="modal-content scanner-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Attendance Scanner</h2>
-              <div className="modal-header-actions">
-                <button onClick={closeScannerModal} className="close-button">✕</button>
-              </div>
-            </div>
-
-            <div className="scanner-body">
-              <div className="scanner-video-wrapper">
-                <video ref={videoRef} className="scanner-video" autoPlay playsInline muted />
+          <div
+            className="modal-content scanner-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 820,
+              minWidth: 350,
+              width: '96vw',
+              padding: 28,
+              borderRadius: 14,
+              background: '#ffffff',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.22), 0 1px 3px rgba(0,0,0,0.25)',
+              display: 'flex',
+              flexDirection: window.innerWidth < 650 ? 'column' : 'row',
+              alignItems: 'stretch',
+              gap: 24,
+            }}
+          >
+            {/* Camera Section - minimal, black background, no heavy border */}
+            <div style={{
+              flex: '1 1 330px', maxWidth: 380, minWidth: 240,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            }}>
+        <div style={{ background: '#111', borderRadius: 10, padding: 6, border: '1px solid #1f1f1f' }}>
+          <video ref={videoRef} className="scanner-video" autoPlay playsInline muted style={{ width: 340, height: 255, background: '#000', borderRadius: 8, objectFit: 'cover', boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }} />
                 <canvas ref={canvasRef} style={{ display: 'none' }} />
               </div>
+        {!isScannerActive && !recognizedCandidate && (
+          <button
+            style={{
+              marginTop: 14,
+              fontWeight: 700,
+              fontSize: '0.98em',
+              padding: '10px 28px',
+              background: '#000',
+              color: '#fff',
+              border: '1px solid #000',
+              borderRadius: 6,
+              letterSpacing: '0.02em',
+              cursor: 'pointer',
+            }}
+            className="btn"
+            onClick={startCamera}
+          >
+            Start
+          </button>
+        )}
+            </div>
 
-              <div className="scanner-status">
-                <p>{scannerMessage}</p>
-                {scannerError && <p className="scanner-error">{scannerError}</p>}
+            {/* Subtle Divider */}
+            <div style={{
+              width: 1, background: '#e9e9e9', alignSelf: 'stretch', display: window.innerWidth < 650 ? 'none' : 'block'
+            }} />
+
+            {/* Details Section - black & white only */}
+            <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', minWidth: 240 }}>
+              {/* Status */}
+              <div className="scanner-status" style={{ marginBottom: recognizedCandidate ? 8 : 16, fontWeight: 500, minHeight: 28, color: '#111' }}>
+                <p style={{ margin: 0 }}>{scannerMessage}</p>
+                {scannerError && <p className="scanner-error" style={{ color: '#c00', margin: '6px 0 0 0' }}>{scannerError}</p>}
               </div>
 
+              {/* Profile Card (compact) */}
               {recognizedCandidate && (
-                <div className="scanner-confirmation">
-                  <h3>Confirm Student</h3>
-                  <p><strong>ID:</strong> {recognizedCandidate.student.displayId || recognizedCandidate.student.id}</p>
-                  <p><strong>Name:</strong> {recognizedCandidate.student.firstName} {recognizedCandidate.student.lastName}</p>
-                  <p><strong>Email:</strong> {recognizedCandidate.student.email}</p>
-                  <p><strong>Confidence:</strong> {Math.round((recognizedCandidate.similarity || 0) * 100)}%</p>
-                  {recognizedCandidate.recommendedStatus && (
-                    <p><strong>Suggested Status:</strong> {recognizedCandidate.recommendedStatus}</p>
-                  )}
-                  {recognizedCandidate.recommendedCheckInTime && (
-                    <p><strong>Suggested Check-in:</strong> {new Date(recognizedCandidate.recommendedCheckInTime).toLocaleTimeString('en-SG', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit'
-                    })}</p>
-                  )}
-
-                  <div className="scanner-confirmation-actions">
-                    <button onClick={handleScannerAccept} className="btn btn-small btn-primary">Accept</button>
-                    <button onClick={handleScannerReject} className="btn btn-small btn-secondary">Reject</button>
+                <div style={{
+                  background: '#fff',
+                  border: '1px solid #ededed',
+                  borderRadius: 10,
+                  padding: '10px 12px',
+                  color: '#111',
+                  fontSize: '0.98em',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>ID:</span>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{recognizedCandidate.student.displayId || recognizedCandidate.student.id}</span>
+                    <span style={{ marginLeft: 8, fontSize: 12, color: '#222', background: '#f4f4f4', padding: '2px 6px', borderRadius: 4 }}>
+                      {Math.round((recognizedCandidate.similarity || 0) * 100)}% match
+                    </span>
                   </div>
+                  <div style={{ fontSize: '1.08em', fontWeight: 700, marginBottom: 2 }}>{recognizedCandidate.student.firstName} {recognizedCandidate.student.lastName}</div>
+                  <div style={{ fontSize: 13, color: '#555', marginBottom: 2 }}>{recognizedCandidate.student.email}</div>
+                  <div style={{ fontSize: 13 }}>
+                    {recognizedCandidate.recommendedStatus && (
+                      <span><strong>Status:</strong> {recognizedCandidate.recommendedStatus} </span>
+                    )}
+                    {recognizedCandidate.recommendedCheckInTime && (
+                      <span style={{ marginLeft: 6 }}><strong>Check-in:</strong> {new Date(recognizedCandidate.recommendedCheckInTime).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons OUTSIDE the profile card */}
+              {recognizedCandidate && (
+                <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                  <button onClick={handleScannerAccept} style={{ flex: 1, padding: '12px 0', fontWeight: 600, color: '#fff', background: '#000', border: '1px solid #000', borderRadius: 6 }}>Accept</button>
+                  <button onClick={handleScannerReject} style={{ flex: 1, padding: '12px 0', fontWeight: 600, color: '#000', background: '#fff', border: '1px solid #000', borderRadius: 6 }}>Reject</button>
                 </div>
               )}
             </div>

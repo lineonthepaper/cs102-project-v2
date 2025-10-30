@@ -54,7 +54,7 @@ public class FaceRecognitionUtils {
     }
 
     /**
-     * Fine-tunable matching that applies threshold, consensus and top-2 margin checks.
+     * Fine-tunable matching with simplified, clear decision logic.
      */
     public static ComparisonResult findBestMatch(float[] targetEmbedding,
             Map<String, List<float[]>> trainingEmbeddings,
@@ -68,31 +68,40 @@ public class FaceRecognitionUtils {
             return null;
         }
 
-        // track top-2 and consensus only; do not allocate interim object until acceptance
+        System.out.println("\n[MATCHING] ==========================================");
+        System.out.println("[MATCHING] Thresholds: main=" + String.format("%.2f%%", similarityThreshold * 100) +
+                         ", perImage=" + String.format("%.2f%%", perImageThreshold * 100) +
+                         ", singleStrict=" + String.format("%.2f%%", singleImageStrictThreshold * 100) +
+                         ", margin=" + String.format("%.2f%%", top2Margin * 100));
+
+        // Track top-2 candidates
         float bestSimilarity = Float.NEGATIVE_INFINITY;
         float secondBestSimilarity = Float.NEGATIVE_INFINITY;
         String bestIdentity = null;
         int bestIdentityHits = 0;
         int bestIdentityTotal = 0;
-        System.out.println("[DEBUG] === Face Recognition Comparison ===");
-        System.out.println("[DEBUG] Threshold: " + String.format("%.2f%%", similarityThreshold * 100));
 
+        // Compare against all known identities
         for (Map.Entry<String, List<float[]>> entry : trainingEmbeddings.entrySet()) {
             String identity = entry.getKey();
             List<float[]> embeddings = entry.getValue();
             if (embeddings == null || embeddings.isEmpty()) {
                 continue;
             }
+            
             float bestSimilarityForIdentity = Float.NEGATIVE_INFINITY;
             int hitsAbove = 0;
+            
+            System.out.println("[MATCHING] Comparing with " + identity + " (" + embeddings.size() + " reference images):");
+            
             for (int i = 0; i < embeddings.size(); i++) {
                 float[] embedding = embeddings.get(i);
                 if (embedding == null) {
                     continue;
                 }
                 float similarity = cosineSimilarity(targetEmbedding, embedding);
-                System.out.println(String.format("[DEBUG]   %s (image %d): %.2f%%", 
-                                                identity, i + 1, similarity * 100));
+                System.out.println(String.format("[MATCHING]   Image %d: %.2f%%", i + 1, similarity * 100));
+                
                 if (similarity >= perImageThreshold) {
                     hitsAbove++;
                 }
@@ -104,7 +113,8 @@ public class FaceRecognitionUtils {
             if (bestSimilarityForIdentity == Float.NEGATIVE_INFINITY) {
                 continue;
             }
-            // Track top-2 similarities across identities for margin check
+            
+            // Track top-2 similarities across all identities
             if (bestSimilarityForIdentity > bestSimilarity) {
                 secondBestSimilarity = bestSimilarity;
                 bestSimilarity = bestSimilarityForIdentity;
@@ -116,45 +126,54 @@ public class FaceRecognitionUtils {
             }
         }
 
-        // Final decision with stricter rules
+        // No candidates found at all
         if (bestIdentity == null) {
-            System.out.println("[DEBUG] No match candidates found");
-            System.out.println("[DEBUG] ===================================");
+            System.out.println("[MATCHING] RESULT: No candidates found");
+            System.out.println("[MATCHING] ==========================================\n");
             return null;
         }
 
-        boolean clearsMainThreshold = bestSimilarity >= (float) similarityThreshold;
-        boolean clearsMargin = secondBestSimilarity == Float.NEGATIVE_INFINITY || (bestSimilarity - secondBestSimilarity) >= top2Margin;
-
-        boolean clearsConsensus;
+        // Decision logic - simplified and clear
+        System.out.println("\n[MATCHING] Best candidate: " + bestIdentity);
+        System.out.println("[MATCHING]   Best similarity: " + String.format("%.2f%%", bestSimilarity * 100));
+        System.out.println("[MATCHING]   Runner-up: " + 
+                         (secondBestSimilarity == Float.NEGATIVE_INFINITY ? "none" : String.format("%.2f%%", secondBestSimilarity * 100)));
+        System.out.println("[MATCHING]   Hits above threshold: " + bestIdentityHits + "/" + bestIdentityTotal);
+        
+        // Check 1: Main threshold
+        boolean passMainThreshold = bestSimilarity >= (float) similarityThreshold;
+        System.out.println("[MATCHING]   Check 1 - Main threshold: " + (passMainThreshold ? "PASS" : "FAIL"));
+        
+        // Check 2: Margin from runner-up
+        float margin = secondBestSimilarity == Float.NEGATIVE_INFINITY ? 1.0f : (bestSimilarity - secondBestSimilarity);
+        boolean passMargin = margin >= top2Margin;
+        System.out.println("[MATCHING]   Check 2 - Margin (" + String.format("%.2f%%", margin * 100) + "): " + 
+                         (passMargin ? "PASS" : "FAIL"));
+        
+        // Check 3: Consensus (multiple images) OR single-image strict threshold
+        boolean passConsensus;
         if (bestIdentityTotal <= 1) {
-            // If only one reference image, require very strict single-image threshold
-            clearsConsensus = bestSimilarity >= singleImageStrictThreshold;
+            // Single reference image: require strict threshold
+            passConsensus = bestSimilarity >= singleImageStrictThreshold;
+            System.out.println("[MATCHING]   Check 3 - Single image strict: " + (passConsensus ? "PASS" : "FAIL"));
         } else {
-            // Cap the requirement by how many references we actually have
+            // Multiple reference images: require minimum hits
             int required = Math.min(minHitsRequired, bestIdentityTotal);
-            clearsConsensus = bestIdentityHits >= required;
+            passConsensus = bestIdentityHits >= required;
+            System.out.println("[MATCHING]   Check 3 - Consensus (" + bestIdentityHits + " >= " + required + "): " + 
+                             (passConsensus ? "PASS" : "FAIL"));
         }
-
-        System.out.println(String.format("[DEBUG] BEST CANDIDATE: %s at %.2f%% | runner-up: %.2f%% | hits: %d/%d", 
-                                         bestIdentity, bestSimilarity * 100, 
-                                         (secondBestSimilarity==Float.NEGATIVE_INFINITY?0:secondBestSimilarity*100),
-                                         bestIdentityHits, bestIdentityTotal));
-        System.out.println(String.format("[DEBUG] Checks -> main: %b, margin: %b, consensus: %b", 
-                                         clearsMainThreshold, clearsMargin, clearsConsensus));
-
-        // Adaptive acceptance: allow high-confidence or strong-margin matches
-        boolean isHighConfidence = bestSimilarity >= Math.max(singleImageStrictThreshold, (float) similarityThreshold + 0.05f);
-        boolean isStrongMargin = clearsMargin && bestSimilarity >= (float) similarityThreshold - 0.02f && (bestSimilarity - secondBestSimilarity) >= Math.max(top2Margin, 0.05f);
-        boolean isMatch = (clearsMainThreshold && clearsMargin && clearsConsensus) || isHighConfidence || isStrongMargin;
+        
+        // Final decision: ALL checks must pass
+        boolean isMatch = passMainThreshold && passMargin && passConsensus;
+        
+        System.out.println("\n[MATCHING] RESULT: " + (isMatch ? "ACCEPTED ✓" : "REJECTED ✗"));
+        System.out.println("[MATCHING] ==========================================\n");
+        
         if (!isMatch) {
-            System.out.println("[DEBUG] Final decision: REJECTED");
-            System.out.println("[DEBUG] ===================================");
             return null;
         }
 
-        System.out.println("[DEBUG] Final decision: ACCEPTED");
-        System.out.println("[DEBUG] ===================================");
         return new ComparisonResult(bestIdentity, bestSimilarity, true);
     }
 
