@@ -46,5 +46,14 @@ echo "SUPABASE_URL=${SUPABASE_URL}"
 echo "============================================"
 echo ""
 
+# Setup models (download if missing)
+echo "Checking face recognition models..."
+if [ -f "./scripts/setup-models.sh" ]; then
+    bash "./scripts/setup-models.sh"
+else
+    echo "[WARNING] setup-models.sh not found. Models may be missing."
+fi
+echo ""
+
 cd backend
 ./gradlew bootRun

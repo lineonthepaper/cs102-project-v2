@@ -42,5 +42,14 @@ echo SUPABASE_URL=!SUPABASE_URL!
 echo ============================================
 echo.
 
+REM Setup models (download if missing)
+echo Checking face recognition models...
+if exist "%PROJECT_ROOT%\scripts\setup-models.bat" (
+    call "%PROJECT_ROOT%\scripts\setup-models.bat"
+) else (
+    echo [WARNING] setup-models.bat not found. Models may be missing.
+)
+echo.
+
 cd /d "%PROJECT_ROOT%\backend"
 call gradlew.bat bootRun

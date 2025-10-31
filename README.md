@@ -8,11 +8,32 @@ Face recognition-based attendance system with Java Spring Boot backend and React
 - Node.js 18+
 - Supabase account
 - [OpenCV 4.12.0](https://opencv.org/releases/)
-- [SFace](https://github.com/opencv/opencv_zoo/blob/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx)
+- Internet connection (for automatic model download)
 
 ## Pre Setup
-- Download the OpenCV native library based on your OS from the link above. Extract the opencv_java4xx.dll and place it under backend/src/main/resources/native/
-- Download the SFace model from the link above and place it under backend/src/main/resources/models 
+
+### 1. OpenCV Native Library
+Download the OpenCV native library based on your OS:
+- **macOS/Linux**: Extract `libopencv_java4xx.dylib` (or `.so` on Linux) and place it under `backend/src/main/resources/native/`
+- **Windows**: Extract `opencv_java4xx.dll` and place it under `backend/src/main/resources/native/`
+
+Download from: https://opencv.org/releases/
+
+### 2. Face Recognition Model (Automatic)
+The face recognition model will be **automatically downloaded** when you first start the backend. The setup script checks for the model and downloads it if missing (~249 MB).
+
+**Manual setup (optional):**
+If you prefer to download manually:
+- Run the setup script:
+  ```bash
+  # macOS/Linux
+  ./scripts/setup-models.sh
+  
+  # Windows
+  scripts\setup-models.bat
+  ```
+
+**Note:** The model file (`facenet.onnx`) is ~249 MB and is intentionally not committed to Git. It will be automatically downloaded on first run. 
 
 ## Setup
 
@@ -120,3 +141,27 @@ npm run dev
 ```bash
 java -version  # Should show 21.x
 ```
+
+**Face recognition model not found:**
+If you see an error about `facenet.onnx` missing:
+1. Run the setup script:
+   ```bash
+   # macOS/Linux
+   ./scripts/setup-models.sh
+   
+   # Windows
+   scripts\setup-models.bat
+   ```
+2. The script will automatically download the ~249 MB ArcFace model
+3. Verify it completed successfully (should show ~249 MB file size)
+4. Restart the backend server
+
+**Model download fails:**
+- Check your internet connection
+- Verify you have ~300 MB free disk space
+- Try running the setup script manually (see above)
+- If still failing, download manually from:
+  ```
+  https://github.com/onnx/models/raw/main/validated/vision/body_analysis/arcface/model/arcfaceresnet100-8.onnx
+  ```
+  Save to: `backend/src/main/resources/models/facenet.onnx`
