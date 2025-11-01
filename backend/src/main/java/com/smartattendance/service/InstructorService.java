@@ -2,10 +2,7 @@ package com.smartattendance.service;
 
 import com.smartattendance.dto.request.user.AddInstructorRequest;
 import com.smartattendance.dto.request.user.UpdateInstructorAssignmentsRequest;
-import com.smartattendance.dto.response.attendance.*;
-import com.smartattendance.dto.response.course.*;
 import com.smartattendance.dto.response.user.*;
-import com.smartattendance.dto.response.auth.*;
 import com.smartattendance.entity.*;
 import com.smartattendance.exception.InvalidRequestException;
 import com.smartattendance.exception.ResourceNotFoundException;
@@ -34,16 +31,12 @@ public class InstructorService {
 
     private final UserRepository userRepository;
     private final SectionAssignmentRepository sectionAssignmentRepository;
-    private final SectionRepository sectionRepository;
-    private final CourseRepository courseRepository;
     private final EntityMapper mapper;
 
     public InstructorService(UserRepository userRepository, SectionAssignmentRepository sectionAssignmentRepository,
                             SectionRepository sectionRepository, CourseRepository courseRepository, EntityMapper mapper) {
         this.userRepository = userRepository;
         this.sectionAssignmentRepository = sectionAssignmentRepository;
-        this.sectionRepository = sectionRepository;
-        this.courseRepository = courseRepository;
         this.mapper = mapper;
     }
 
@@ -127,7 +120,7 @@ public class InstructorService {
     public void updateInstructorAssignments(String userId, UpdateInstructorAssignmentsRequest request) {
         try {
             // Verify instructor exists
-            User instructor = userRepository.findById(userId)
+            userRepository.findById(userId)
                     .orElseThrow(() -> new ResourceNotFoundException("Instructor", userId));
     
             // Delete existing instructor assignments

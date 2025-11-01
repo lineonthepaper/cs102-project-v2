@@ -27,8 +27,6 @@ public class AttendanceService {
     private final AttendanceSessionRepository sessionRepository;
     private final AttendanceRecordRepository recordRepository;
     private final SectionRepository sectionRepository;
-    private final SectionEnrollmentRepository enrollmentRepository;
-    private final EntityMapper mapper;
     private final AttendanceStrategyFactory strategyFactory;
 
     public AttendanceService(
@@ -41,8 +39,6 @@ public class AttendanceService {
         this.sessionRepository = sessionRepository;
         this.recordRepository = recordRepository;
         this.sectionRepository = sectionRepository;
-        this.enrollmentRepository = enrollmentRepository;
-        this.mapper = mapper;
         this.strategyFactory = strategyFactory;
     }
 

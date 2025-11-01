@@ -2,7 +2,6 @@ package com.smartattendance.service;
 
 import com.smartattendance.dto.response.course.CourseDTO;
 import com.smartattendance.entity.Course;
-import com.smartattendance.exception.InvalidRequestException;
 import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.CourseRepository;
@@ -24,12 +23,10 @@ public class CourseService {
     private static final Logger logger = LoggerFactory.getLogger(CourseService.class);
     
     private final CourseRepository courseRepository;
-    private final SectionRepository sectionRepository;
     private final EntityMapper mapper;
 
     public CourseService(CourseRepository courseRepository, SectionRepository sectionRepository, EntityMapper mapper) {
         this.courseRepository = courseRepository;
-        this.sectionRepository = sectionRepository;
         this.mapper = mapper;
     }
 
