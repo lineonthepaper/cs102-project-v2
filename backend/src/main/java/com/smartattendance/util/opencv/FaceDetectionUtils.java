@@ -22,6 +22,11 @@ public class FaceDetectionUtils {
     }
 
     public static Mat getFaceFromImageBytes(byte[] imageBytes, CascadeClassifier faceDetector) {
+        FaceDetectionResult result = getFaceFromImageBytesWithBbox(imageBytes, faceDetector);
+        return result != null ? result.getFaceMat() : null;
+    }
+
+    public static FaceDetectionResult getFaceFromImageBytesWithBbox(byte[] imageBytes, CascadeClassifier faceDetector) {
         System.out.println("\n[FACE DETECTION] ========================================");
         
         // Convert bytes to Mat
@@ -31,6 +36,8 @@ public class FaceDetectionUtils {
             return null;
         }
         System.out.println("[FACE DETECTION] Image decoded: " + image.width() + "x" + image.height());
+        int originalWidth = image.width();
+        int originalHeight = image.height();
 
         // --- SCRFD PATH (preferred) ---
         if (scrfd != null) {
@@ -69,7 +76,7 @@ public class FaceDetectionUtils {
                     } else {
                         System.out.println("[FACE DETECTION] SUCCESS: SCRFD with affine alignment");
                         System.out.println("[FACE DETECTION] ========================================\n");
-                        return aligned;
+                        return new FaceDetectionResult(aligned, det.bbox, originalWidth, originalHeight);
                     }
                 }
             } else {
@@ -148,6 +155,6 @@ public class FaceDetectionUtils {
         
         System.out.println("[FACE DETECTION] SUCCESS: Haar with crop+resize to 112x112");
         System.out.println("[FACE DETECTION] ========================================\n");
-        return resized;
+        return new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight);
     }
 }

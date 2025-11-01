@@ -51,6 +51,7 @@ public interface EntityMapper {
 
     // ==================== Attendance Mappings ====================
     
+    @Mapping(target = "attendanceSession", source = "attendanceSession")
     AttendanceRecordDTO toAttendanceRecordDTO(AttendanceRecord record);
     
     List<AttendanceRecordDTO> toAttendanceRecordDTOs(List<AttendanceRecord> records);

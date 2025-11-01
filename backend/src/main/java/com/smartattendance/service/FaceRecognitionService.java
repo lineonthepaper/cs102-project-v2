@@ -201,4 +201,56 @@ public class FaceRecognitionService {
             detectedFace.release();
         }
     }
+
+    public Optional<EmbeddingWithBbox> computeEmbeddingWithBbox(byte[] imageBytes) {
+        ensureModelsLoaded();
+
+        com.smartattendance.util.opencv.FaceDetectionResult result = 
+            com.smartattendance.util.opencv.FaceDetectionUtils.getFaceFromImageBytesWithBbox(imageBytes, faceDetector);
+        if (result == null) {
+            System.out.println("[EMBEDDING] Face detection failed - cannot compute embedding");
+            return Optional.empty();
+        }
+
+        try {
+            System.out.println("[EMBEDDING] Computing embedding from 112x112 face region...");
+            float[] embedding = FaceEmbeddingUtils.faceToEmbedding(result.getFaceMat(), recognitionNet);
+            System.out.println("[EMBEDDING] Successfully computed " + embedding.length + "-dimensional embedding");
+            return Optional.of(new EmbeddingWithBbox(embedding, result.getBoundingBox(), 
+                                                     result.getOriginalWidth(), result.getOriginalHeight()));
+        } finally {
+            result.getFaceMat().release();
+        }
+    }
+
+    public static class EmbeddingWithBbox {
+        private final float[] embedding;
+        private final org.opencv.core.Rect boundingBox;
+        private final int originalWidth;
+        private final int originalHeight;
+
+        public EmbeddingWithBbox(float[] embedding, org.opencv.core.Rect boundingBox, 
+                                int originalWidth, int originalHeight) {
+            this.embedding = embedding;
+            this.boundingBox = boundingBox;
+            this.originalWidth = originalWidth;
+            this.originalHeight = originalHeight;
+        }
+
+        public float[] getEmbedding() {
+            return embedding;
+        }
+
+        public org.opencv.core.Rect getBoundingBox() {
+            return boundingBox;
+        }
+
+        public int getOriginalWidth() {
+            return originalWidth;
+        }
+
+        public int getOriginalHeight() {
+            return originalHeight;
+        }
+    }
 }

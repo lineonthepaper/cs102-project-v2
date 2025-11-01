@@ -19,13 +19,18 @@ function Students() {
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [showAddStudentModal, setShowAddStudentModal] = useState(false)
+  const [showEditStudentModal, setShowEditStudentModal] = useState(false)
+  const [editStudent, setEditStudent] = useState(null)
   const [showManageEnrollmentModal, setShowManageEnrollmentModal] = useState(false)
   const [manageEnrollmentStudent, setManageEnrollmentStudent] = useState(null)
   const [enrollmentSelections, setEnrollmentSelections] = useState({})
   const [savingEnrollment, setSavingEnrollment] = useState(false)
   const [expandedCourses, setExpandedCourses] = useState({})
   const [faceImages, setFaceImages] = useState([])
+  const [editFaceImages, setEditFaceImages] = useState([])
+  const [loadingStudentDetails, setLoadingStudentDetails] = useState(false)
   const fileInputRef = useRef(null)
+  const editFileInputRef = useRef(null)
   const parsedCourseFilter = Number(courseFilter)
   const selectedCourseId =
     courseFilter === 'all' || Number.isNaN(parsedCourseFilter) ? null : parsedCourseFilter
@@ -58,15 +63,13 @@ function Students() {
 
   useEffect(() => {
     if (!selectedStudent) return
-    const updatedStudent = filteredStudents.find(
+    // Don't overwrite selectedStudent from filteredStudents to preserve full attendance records
+    // Only close modal if student was deleted
+    const studentExists = filteredStudents.some(
       (student) => student.id === selectedStudent.id
     )
-
-    if (updatedStudent) {
-      if (updatedStudent !== selectedStudent) {
-        setSelectedStudent(updatedStudent)
-      }
-    } else {
+    
+    if (!studentExists) {
       setSelectedStudent(null)
       setShowModal(false)
     }
@@ -309,10 +312,7 @@ function Students() {
   const selectedStudentSummary = (() => {
     if (!selectedStudent) return null
 
-    const recordsSource =
-      selectedStudent.filteredAttendanceRecords ??
-      selectedStudent.attendanceRecords ??
-      []
+    const recordsSource = selectedStudent.attendanceRecords ?? []
     const records = [...recordsSource]
     const recordTimestamp = (record) => {
       const value = record.attendance_sessions?.session_date
@@ -322,29 +322,14 @@ function Students() {
     }
     records.sort((a, b) => recordTimestamp(b) - recordTimestamp(a))
 
-    const totalSessions =
-      selectedStudent.filteredTotalSessions ??
-      records.length ??
-      0
-    const presentSessions =
-      selectedStudent.filteredPresentSessions ??
-      records.filter((record) => record.status === 'PRESENT' || record.status === 'LATE').length
-    const lateSessions =
-      selectedStudent.filteredLateSessions ??
-      records.filter((record) => record.status === 'LATE').length
-    const absentSessions =
-      selectedStudent.filteredAbsentSessions ??
-      Math.max(totalSessions - presentSessions, 0)
+    // Use pre-computed stats from backend if available, otherwise calculate from records
+    const totalSessions = selectedStudent.totalSessions ?? records.length
+    const presentSessions = selectedStudent.presentSessions ?? records.filter((record) => record.status === 'PRESENT' || record.status === 'LATE').length
+    const lateSessions = selectedStudent.lateSessions ?? records.filter((record) => record.status === 'LATE').length
+    const absentSessions = Math.max(totalSessions - presentSessions, 0)
 
-    const attendanceRate =
-      selectedStudent.filteredAttendanceRate ??
-      (totalSessions > 0 ? Math.round((presentSessions / totalSessions) * 100) : 0)
-
-    const punctualityRate =
-      selectedStudent.filteredPunctualityRate ??
-      (totalSessions > 0
-        ? Math.round(((totalSessions - lateSessions) / totalSessions) * 100)
-        : 0)
+    const attendanceRate = selectedStudent.attendanceRate ?? (totalSessions > 0 ? Math.round((presentSessions / totalSessions) * 100) : 0)
+    const punctualityRate = selectedStudent.punctualityRate ?? (totalSessions > 0 ? Math.round(((totalSessions - lateSessions) / totalSessions) * 100) : 0)
 
     const metrics = [
       { key: 'totalSessions', label: 'Total Sessions', value: totalSessions },
@@ -390,9 +375,82 @@ function Students() {
     return sortOrder === 'asc' ? '↑' : '↓'
   }
 
-  const handleStudentClick = (student) => {
-    setSelectedStudent(student)
+  const handleStudentClick = async (student) => {
+    // Fetch full student data for the modal
+    setLoadingStudentDetails(true)
     setShowModal(true)
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/students/${student.id}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch student details')
+      }
+      const studentData = await response.json()
+      
+      // Transform the data
+      const transformedStudent = {
+        ...studentData,
+        id: studentData.id,
+        displayId: studentData.displayId,
+        first_name: studentData.firstName,
+        last_name: studentData.lastName,
+        email: studentData.email,
+        enabled: studentData.enabled,
+        totalSessions: studentData.totalSessions,
+        presentSessions: studentData.presentSessions,
+        lateSessions: studentData.lateSessions,
+        attendanceRate: studentData.attendanceRate,
+        punctualityRate: studentData.punctualityRate,
+        attendanceRecords: (studentData.attendanceRecords || []).map(record => ({
+          ...record,
+          user_id: record.userId,
+          session_id: record.sessionId,
+          status: record.status,
+          checkin_time: record.checkinTime,
+          checkout_time: record.checkoutTime,
+          attendance_sessions: record.attendanceSession ? {
+            session_date: record.attendanceSession.sessionDate,
+            sections: record.attendanceSession.section ? {
+              id: record.attendanceSession.section.id,
+              section_code: record.attendanceSession.section.sectionCode,
+              courses: record.attendanceSession.section.course ? {
+                id: record.attendanceSession.section.course.id,
+                code: record.attendanceSession.section.course.code
+              } : null
+            } : null
+          } : null
+        })),
+        enrollments: (studentData.enrollments || []).map(enrollment => ({
+          ...enrollment,
+          user_id: enrollment.userId,
+          section_id: enrollment.sectionId,
+          is_active: enrollment.isActive,
+          enrolled_at: enrollment.enrolledAt,
+          sections: enrollment.section ? {
+            id: enrollment.section.id,
+            section_code: enrollment.section.sectionCode,
+            year: enrollment.section.year,
+            semester: enrollment.section.semester,
+            meeting_day: enrollment.section.meetingDay,
+            start_time: enrollment.section.startTime,
+            end_time: enrollment.section.endTime,
+            location: enrollment.section.location,
+            courses: enrollment.section.course ? {
+              id: enrollment.section.course.id,
+              code: enrollment.section.course.code
+            } : null
+          } : null
+        }))
+      }
+      
+      setSelectedStudent(transformedStudent)
+    } catch (error) {
+      console.error('Error fetching student details:', error)
+      // Fallback to basic student data
+      setSelectedStudent(student)
+    } finally {
+      setLoadingStudentDetails(false)
+    }
   }
 
   const closeModal = () => {
@@ -415,6 +473,31 @@ function Students() {
   const closeAddStudentModal = () => {
     setShowAddStudentModal(false)
     resetFaceImageState()
+  }
+
+  const openEditStudentModal = async (student) => {
+    // Convert backend face images to format expected by UI
+    const existingImages = student.faceImages || []
+    const formattedImages = existingImages.map((img, index) => ({
+      id: `existing-${index}`,
+      preview: `data:image/jpeg;base64,${img}`,
+      data: img,
+      name: `Face ${index + 1}`,
+      isExisting: true
+    }))
+    
+    setEditFaceImages(formattedImages)
+    setEditStudent(student)
+    setShowEditStudentModal(true)
+  }
+
+  const closeEditStudentModal = () => {
+    setShowEditStudentModal(false)
+    setEditStudent(null)
+    setEditFaceImages([])
+    if (editFileInputRef.current) {
+      editFileInputRef.current.value = ''
+    }
   }
 
   const generateImageId = () =>
@@ -487,6 +570,61 @@ function Students() {
 
   const handleRemoveFaceImage = (imageId) => {
     setFaceImages((prev) => prev.filter((image) => image.id !== imageId))
+  }
+
+  const handleEditUploadButtonClick = () => {
+    const totalImages = editFaceImages.length
+    if (totalImages >= 8) {
+      alert('You can upload up to 8 images for each student.')
+      return
+    }
+    editFileInputRef.current?.click()
+  }
+
+  const handleEditFaceImageSelection = async (event) => {
+    const files = Array.from(event.target.files || [])
+    if (files.length === 0) {
+      return
+    }
+
+    const remainingCapacity = 8 - editFaceImages.length
+    if (remainingCapacity <= 0) {
+      alert('Maximum of 8 images reached.')
+      event.target.value = ''
+      return
+    }
+
+    const filesToProcess = files.slice(0, remainingCapacity)
+    if (files.length > remainingCapacity) {
+      alert('Only the first 8 images were added. Please remove some images before uploading more.')
+    }
+
+    try {
+      const processed = await Promise.all(
+        filesToProcess.map(async (file) => {
+          const dataUrl = await readFileAsDataUrl(file)
+          const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl
+          return {
+            id: generateImageId(),
+            preview: dataUrl,
+            data: base64Data,
+            name: file.name,
+            isExisting: false
+          }
+        })
+      )
+
+      setEditFaceImages((prev) => [...prev, ...processed])
+    } catch (error) {
+      console.error('Failed to process face images:', error)
+      alert('Failed to process one or more images. Please try again with valid image files.')
+    } finally {
+      event.target.value = ''
+    }
+  }
+
+  const handleRemoveEditFaceImage = (imageId) => {
+    setEditFaceImages((prev) => prev.filter((image) => image.id !== imageId))
   }
 
   const openManageEnrollmentModal = async (student) => {
@@ -605,6 +743,55 @@ function Students() {
     }
   }
 
+  const handleDeleteStudent = async (student) => {
+    if (!confirm(`Are you sure you want to delete ${student.first_name} ${student.last_name} (${student.id})? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/students/${student.id}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Failed to delete student')
+      }
+
+      await fetchStudents()
+      closeModal()
+      alert('Student deleted successfully')
+    } catch (error) {
+      console.error('Error deleting student:', error)
+      alert(error.message || 'Failed to delete student')
+    }
+  }
+
+  const handleEditStudent = async (student) => {
+    // Fetch full student data for editing
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/students/${student.id}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch student details')
+      }
+      const studentData = await response.json()
+      
+      // Transform the data for editing
+      const transformedStudent = {
+        ...studentData,
+        first_name: studentData.firstName,
+        last_name: studentData.lastName,
+        displayId: studentData.displayId
+      }
+      
+      await openEditStudentModal(transformedStudent)
+    } catch (error) {
+      console.error('Error fetching student details:', error)
+      // Fallback to basic student data
+      await openEditStudentModal(student)
+    }
+  }
+
   if (loading) {
     return <div className="loading">Loading students...</div>
   }
@@ -692,9 +879,6 @@ function Students() {
               <th onClick={() => handleSort('last_name')} className="sortable">
                 Name {getSortIcon('last_name')}
               </th>
-              <th onClick={() => handleSort('email')} className="sortable">
-                Email {getSortIcon('email')}
-              </th>
               <th onClick={() => handleSort('attendanceRate')} className="sortable">
                 Attendance {getSortIcon('attendanceRate')}
               </th>
@@ -713,9 +897,13 @@ function Students() {
                 <tr key={student.displayId || student.id}>
                   <td className="student-id">{student.displayId || student.id}</td>
                   <td className="student-name">
-                    {student.first_name} {student.last_name}
+                    <div>
+                      {student.first_name} {student.last_name}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.15rem' }}>
+                      {student.email}
+                    </div>
                   </td>
-                  <td>{student.email}</td>
                   <td>
                     <div className="attendance-rate">
                       <span className="rate-text">{attendanceRateValue}%</span>
@@ -738,20 +926,33 @@ function Students() {
                       </div>
                     </div>
                   </td>
-                  <td className="action-buttons">
-                    <button
-                      onClick={() => handleStudentClick(student)}
-                      className="btn btn-small btn-action"
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      View Details
-                    </button>
-                    <button
-                      onClick={() => openManageEnrollmentModal(student)}
-                      className="btn btn-small btn-action"
-                    >
-                      Manage Enrolment
-                    </button>
+                  <td>
+                    <div className="action-buttons">
+                      <button
+                        onClick={() => handleStudentClick(student)}
+                        className="btn btn-small btn-action"
+                      >
+                        View
+                      </button>
+                      <button
+                        onClick={() => openManageEnrollmentModal(student)}
+                        className="btn btn-small btn-action"
+                      >
+                        Sections
+                      </button>
+                      <button
+                        onClick={() => handleEditStudent(student)}
+                        className="btn btn-small btn-action"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteStudent(student)}
+                        className="btn btn-small btn-action"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )
@@ -767,31 +968,35 @@ function Students() {
       </div>
 
       {/* Student Details Modal */}
-      {showModal && selectedStudent && (
+      {showModal && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Student Overview</h2>
-              <button onClick={closeModal} className="close-button">
-                ✕
-              </button>
-            </div>
-
-            <div className="student-info">
-              <div className="student-header">
-                <div className="student-details">
-                  <div className="student-name-row">
-                    <h3>{selectedStudent.first_name} {selectedStudent.last_name}</h3>
-                    <span className="student-id-badge">
-                      {selectedStudent.displayId || selectedStudent.id}
-                    </span>
-                  </div>
-                  <p className="student-email">{selectedStudent.email}</p>
+            {loadingStudentDetails ? (
+              <div className="loading">Loading student details...</div>
+            ) : selectedStudent ? (
+              <>
+                <div className="modal-header">
+                  <h2>Student Overview</h2>
+                  <button onClick={closeModal} className="close-button">
+                    ✕
+                  </button>
                 </div>
-              </div>
-            </div>
 
-            <div className="modal-body student-details-body">
+                <div className="student-info">
+                  <div className="student-header">
+                    <div className="student-details">
+                      <div className="student-name-row">
+                        <h3>{selectedStudent.first_name} {selectedStudent.last_name}</h3>
+                        <span className="student-id-badge">
+                          {selectedStudent.displayId || selectedStudent.id}
+                        </span>
+                      </div>
+                      <p className="student-email">{selectedStudent.email}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="modal-body student-details-body">
               <div className="details-overview">
                 <div className="details-overview-header">
                   <h3>Attendance Summary</h3>
@@ -866,6 +1071,8 @@ function Students() {
                 )}
               </div>
             </div>
+              </>
+            ) : null}
           </div>
         </div>
       )}
@@ -1107,6 +1314,157 @@ function Students() {
                 <div className="form-actions">
                   <button type="submit" className="btn btn-primary">
                     Add Student
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Student Modal */}
+      {showEditStudentModal && editStudent && (
+        <div className="modal-overlay" onClick={closeEditStudentModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Edit Student</h2>
+              <button onClick={closeEditStudentModal} className="close-button">
+                ✕
+              </button>
+            </div>
+
+            <div className="add-student-form">
+              <form onSubmit={async (e) => {
+                e.preventDefault()
+                
+                // Prevent double submission
+                const submitButton = e.target.querySelector('button[type="submit"]')
+                if (submitButton.disabled) return
+                submitButton.disabled = true
+                
+                const formData = new FormData(e.target)
+                const studentData = {
+                  email: formData.get('email'),
+                  firstName: formData.get('firstName'),
+                  lastName: formData.get('lastName'),
+                  faceImages: editFaceImages.map((image) => image.data)
+                }
+
+                try {
+                  const response = await fetch(`${API_BASE_URL}/api/students/${editStudent.id}`, {
+                    method: 'PUT',
+                    headers: {
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(studentData)
+                  })
+
+                  const result = await response.json()
+
+                  if (!response.ok) {
+                    throw new Error(result.message || 'Failed to update student')
+                  }
+
+                  // Refresh students list
+                  await fetchStudents()
+                  closeEditStudentModal()
+                  alert(result.message || 'Student updated successfully!')
+                } catch (error) {
+                  console.error('Error updating student:', error)
+                  alert(error.message || 'Failed to update student')
+                } finally {
+                  // Re-enable submit button in case of error
+                  if (submitButton) submitButton.disabled = false
+                }
+              }}>
+                <div className="form-group">
+                  <label className="form-label">Student ID (Read Only)</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={editStudent.displayId || editStudent.id}
+                    readOnly
+                    disabled
+                    style={{ background: '#f3f4f6', cursor: 'not-allowed' }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Email Address</label>
+                  <input
+                    type="email"
+                    name="email"
+                    className="form-input"
+                    placeholder="student@smu.edu.sg"
+                    autoComplete="off"
+                    defaultValue={editStudent.email}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">First Name</label>
+                  <input
+                    type="text"
+                    name="firstName"
+                    className="form-input"
+                    placeholder="John"
+                    autoComplete="off"
+                    defaultValue={editStudent.first_name}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Last Name</label>
+                  <input
+                    type="text"
+                    name="lastName"
+                    className="form-input"
+                    placeholder="Doe"
+                    autoComplete="off"
+                    defaultValue={editStudent.last_name}
+                    required
+                  />
+                </div>
+
+                <div className="form-group face-images-section">
+                  <label className="form-label">Face Images</label>
+                  <div className="face-images-row">
+                    <button
+                      type="button"
+                      className="btn-secondary-small upload-button"
+                      onClick={handleEditUploadButtonClick}
+                    >
+                      Upload Image
+                    </button>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      ref={editFileInputRef}
+                      onChange={handleEditFaceImageSelection}
+                      style={{ display: 'none' }}
+                    />
+                    {editFaceImages.map((image, index) => (
+                      <div key={image.id} className="face-image-item">
+                        <img src={image.preview} alt={`Face ${index + 1}`} />
+                        <button
+                          type="button"
+                          className="face-image-remove"
+                          onClick={() => handleRemoveEditFaceImage(image.id)}
+                          aria-label={`Remove face image ${index + 1}`}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="form-actions">
+                  <button type="submit" className="btn btn-primary">
+                    Update Student
                   </button>
                 </div>
               </form>

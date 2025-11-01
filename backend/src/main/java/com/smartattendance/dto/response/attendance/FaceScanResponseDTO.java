@@ -14,6 +14,7 @@ public class FaceScanResponseDTO {
     private String recommendedStatus;
     private OffsetDateTime recommendedCheckInTime;
     private String message;
+    private BoundingBoxDTO boundingBox;
 
     public boolean isMatched() {
         return matched;
@@ -69,6 +70,14 @@ public class FaceScanResponseDTO {
 
     public void setMessage(String message) {
         this.message = message;
+    }
+
+    public BoundingBoxDTO getBoundingBox() {
+        return boundingBox;
+    }
+
+    public void setBoundingBox(BoundingBoxDTO boundingBox) {
+        this.boundingBox = boundingBox;
     }
 }
 

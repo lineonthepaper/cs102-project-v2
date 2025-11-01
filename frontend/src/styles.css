@@ -876,6 +876,13 @@ body {
   font-weight: 500;
 }
 
+.btn-tiny {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  width: auto;
+}
+
 .btn-success {
   background-color: white !important;
   color: black !important;
@@ -921,6 +928,7 @@ body {
 .action-buttons {
   display: flex;
   gap: 0.5rem;
+  align-items: center;
 }
 
 .duration-input-group {

@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 import com.smartattendance.entity.ComparisonResult;
 
+import com.smartattendance.dto.response.attendance.BoundingBoxDTO;
 import com.smartattendance.dto.response.attendance.FaceScanResponseDTO;
 import com.smartattendance.dto.response.attendance.RecognizedStudentDTO;
 import com.smartattendance.entity.AttendanceRecord;
@@ -199,6 +200,9 @@ public class SessionRecognitionManager {
         private final FaceRecognitionService recognitionService;
         private final Map<String, Integer> voteCounts = new ConcurrentHashMap<>();
         private final Map<String, Float> maxSimilarityById = new ConcurrentHashMap<>();
+        private final Map<String, org.opencv.core.Rect> boundingBoxByCandidate = new ConcurrentHashMap<>();
+        private final Map<String, Integer> originalWidthByCandidate = new ConcurrentHashMap<>();
+        private final Map<String, Integer> originalHeightByCandidate = new ConcurrentHashMap<>();
         private final int windowSize;
         private final int requiredVotes;
         private final double minSimilarity;
@@ -241,12 +245,26 @@ public class SessionRecognitionManager {
             System.out.println("[VOTING] Frame " + (scans + 1) + "/" + windowSize);
             System.out.println("[VOTING] Candidates: " + embeddingIndex.size() + " students");
             
-            // Get top candidate for this frame (no threshold applied yet)
-            Optional<ComparisonResult> top = recognitionService.topCandidate(imageBytes, embeddingIndex);
+            // Get top candidate with bounding box for this frame
+            Optional<FaceRecognitionService.EmbeddingWithBbox> embeddingWithBbox = 
+                recognitionService.computeEmbeddingWithBbox(imageBytes);
             
-            if (top.isPresent() && top.get().getFaceName() != null) {
-                String candidateId = top.get().getFaceName();
-                float topSim = top.get().getSimilarity();
+            if (embeddingWithBbox.isPresent()) {
+                FaceRecognitionService.EmbeddingWithBbox emb = embeddingWithBbox.get();
+                
+                // Get best match from computed embedding
+                ComparisonResult result = com.smartattendance.util.opencv.FaceRecognitionUtils
+                    .findTopCandidate(emb.getEmbedding(), embeddingIndex);
+                
+                if (result != null && result.getFaceName() != null) {
+                String candidateId = result.getFaceName();
+                float topSim = result.getSimilarity();
+                
+                // Store bounding box for this candidate
+                boundingBoxByCandidate.put(candidateId, emb.getBoundingBox());
+                originalWidthByCandidate.put(candidateId, emb.getOriginalWidth());
+                originalHeightByCandidate.put(candidateId, emb.getOriginalHeight());
+                
                 StudentProfile profile = profiles.get(candidateId);
                 String candidateName = profile != null ? profile.getEmail() : candidateId;
                 
@@ -264,6 +282,10 @@ public class SessionRecognitionManager {
                                      String.format("%.2f%%", this.minSimilarity * 100) + " threshold)");
                 }
                 scans++;
+                } else {
+                    System.out.println("[VOTING] No face detected in this frame");
+                    scans++;
+                }
             } else {
                 System.out.println("[VOTING] No face detected in this frame");
                 scans++;
@@ -358,18 +380,55 @@ public class SessionRecognitionManager {
                 System.out.println("[VOTING]   Status: " + recommendedStatus);
                 System.out.println("[VOTING] ============================================\n");
                 
+                // Get bounding box for the winning candidate
+                org.opencv.core.Rect winningBoundingBox = boundingBoxByCandidate.get(studentId);
+                int winningOriginalWidth = originalWidthByCandidate.getOrDefault(studentId, 0);
+                int winningOriginalHeight = originalHeightByCandidate.getOrDefault(studentId, 0);
+                
                 resetVoting();
-                return FaceScanResponseDTOBuilder.match(profile, similarity, recommendedStatus, now.toOffsetDateTime());
+                return FaceScanResponseDTOBuilder.match(profile, similarity, recommendedStatus, now.toOffsetDateTime(), 
+                                                        winningBoundingBox, winningOriginalWidth, winningOriginalHeight);
             }
 
             System.out.println("[VOTING] Continue scanning... (" + scans + "/" + windowSize + " frames)");
             System.out.println("[VOTING] ============================================\n");
+            
+            // Return current top candidate for real-time overlay display
+            if (!voteCounts.isEmpty()) {
+                Map.Entry<String, Integer> currentLeader = voteCounts.entrySet().stream()
+                        .max((a, b) -> {
+                            int cmp = Integer.compare(a.getValue(), b.getValue());
+                            if (cmp != 0) return cmp;
+                            float sa = maxSimilarityById.getOrDefault(a.getKey(), 0.0f);
+                            float sb = maxSimilarityById.getOrDefault(b.getKey(), 0.0f);
+                            return Float.compare(sa, sb);
+                        })
+                        .orElse(null);
+                
+                if (currentLeader != null) {
+                    String leaderId = currentLeader.getKey();
+                    StudentProfile leaderProfile = profiles.get(leaderId);
+                    if (leaderProfile != null) {
+                        double leaderSimilarity = (double) maxSimilarityById.getOrDefault(leaderId, 0.0f);
+                        org.opencv.core.Rect leaderBbox = boundingBoxByCandidate.get(leaderId);
+                        int leaderWidth = originalWidthByCandidate.getOrDefault(leaderId, 0);
+                        int leaderHeight = originalHeightByCandidate.getOrDefault(leaderId, 0);
+                        
+                        return FaceScanResponseDTOBuilder.scanningWithCandidate(
+                            leaderProfile, leaderSimilarity, leaderBbox, leaderWidth, leaderHeight);
+                    }
+                }
+            }
+            
             return FaceScanResponseDTOBuilder.noMatch("Scanning...");
         }
         
         private void resetVoting() {
             voteCounts.clear();
             maxSimilarityById.clear();
+            boundingBoxByCandidate.clear();
+            originalWidthByCandidate.clear();
+            originalHeightByCandidate.clear();
             scans = 0;
         }
         
@@ -468,6 +527,40 @@ public class SessionRecognitionManager {
             return dto;
         }
 
+        static FaceScanResponseDTO scanningWithCandidate(StudentProfile profile,
+                                                          double similarity,
+                                                          org.opencv.core.Rect boundingBox,
+                                                          int originalWidth,
+                                                          int originalHeight) {
+            FaceScanResponseDTO dto = new FaceScanResponseDTO();
+            dto.setMatched(false);
+            dto.setAlreadyMarked(false);
+            dto.setSimilarity(similarity);
+            dto.setMessage("Scanning...");
+
+            if (boundingBox != null) {
+                BoundingBoxDTO bboxDTO = new BoundingBoxDTO(
+                    boundingBox.x,
+                    boundingBox.y,
+                    boundingBox.width,
+                    boundingBox.height,
+                    originalWidth,
+                    originalHeight
+                );
+                dto.setBoundingBox(bboxDTO);
+            }
+
+            RecognizedStudentDTO studentDTO = new RecognizedStudentDTO();
+            studentDTO.setId(profile.getUserId());
+            studentDTO.setDisplayId(profile.getDisplayId());
+            studentDTO.setFirstName(profile.getFirstName());
+            studentDTO.setLastName(profile.getLastName());
+            studentDTO.setEmail(profile.getEmail());
+            dto.setStudent(studentDTO);
+
+            return dto;
+        }
+
         static FaceScanResponseDTO alreadyMarked(StudentProfile profile,
                                                  double similarity,
                                                  AttendanceStatus status,
@@ -483,12 +576,34 @@ public class SessionRecognitionManager {
                                          double similarity,
                                          AttendanceStatus recommendedStatus,
                                          OffsetDateTime checkInTime) {
+            return match(profile, similarity, recommendedStatus, checkInTime, null, 0, 0);
+        }
+
+        static FaceScanResponseDTO match(StudentProfile profile,
+                                         double similarity,
+                                         AttendanceStatus recommendedStatus,
+                                         OffsetDateTime checkInTime,
+                                         org.opencv.core.Rect boundingBox,
+                                         int originalWidth,
+                                         int originalHeight) {
             FaceScanResponseDTO dto = new FaceScanResponseDTO();
             dto.setMatched(true);
             dto.setAlreadyMarked(false);
             dto.setSimilarity(similarity);
             dto.setRecommendedStatus(recommendedStatus != null ? recommendedStatus.getCode() : null);
             dto.setRecommendedCheckInTime(checkInTime);
+
+            if (boundingBox != null) {
+                BoundingBoxDTO bboxDTO = new BoundingBoxDTO(
+                    boundingBox.x,
+                    boundingBox.y,
+                    boundingBox.width,
+                    boundingBox.height,
+                    originalWidth,
+                    originalHeight
+                );
+                dto.setBoundingBox(bboxDTO);
+            }
 
             RecognizedStudentDTO studentDTO = new RecognizedStudentDTO();
             studentDTO.setId(profile.getUserId());

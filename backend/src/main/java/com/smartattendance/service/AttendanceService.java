@@ -26,6 +26,7 @@ public class AttendanceService {
     private final AttendanceSessionRepository sessionRepository;
     private final AttendanceRecordRepository recordRepository;
     private final SectionRepository sectionRepository;
+    private final SectionEnrollmentRepository enrollmentRepository;
     private final AttendanceStrategyFactory strategyFactory;
     private final SessionRecognitionManager recognitionManager;
 
@@ -33,11 +34,13 @@ public class AttendanceService {
             AttendanceSessionRepository sessionRepository,
             AttendanceRecordRepository recordRepository,
             SectionRepository sectionRepository,
+            SectionEnrollmentRepository enrollmentRepository,
             AttendanceStrategyFactory strategyFactory,
             SessionRecognitionManager recognitionManager) {
         this.sessionRepository = sessionRepository;
         this.recordRepository = recordRepository;
         this.sectionRepository = sectionRepository;
+        this.enrollmentRepository = enrollmentRepository;
         this.strategyFactory = strategyFactory;
         this.recognitionManager = recognitionManager;
     }
@@ -78,6 +81,9 @@ public class AttendanceService {
             AttendanceSession session = sessionRepository.findById(id)
                     .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
     
+            String oldStatus = session.getStatus();
+            String newStatus = request.getStatus();
+            
             session.setSectionId(request.getSectionId());
             session.setSessionDate(LocalDate.parse(request.getSessionDate()));
             session.setScheduledStartTime(LocalTime.parse(request.getScheduledStartTime()));
@@ -86,11 +92,68 @@ public class AttendanceService {
             session.setNotes(request.getNotes());
     
             AttendanceSession updatedSession = sessionRepository.save(session);
+            
+            // Auto-mark absent if session is being closed/ended
+            if (!isEndedStatus(oldStatus) && isEndedStatus(newStatus)) {
+                autoMarkAbsentForUnmarkedStudents(id, request.getSectionId());
+            }
+            
             return mapToSessionDTO(updatedSession);
         } catch (Exception e) {
             e.printStackTrace();
             throw new InvalidRequestException("Session could not be updated.");
         }
+    }
+    
+    private boolean isEndedStatus(String status) {
+        if (status == null) return false;
+        String upper = status.toUpperCase();
+        return "ENDED".equals(upper) || "CLOSED".equals(upper) || "COMPLETED".equals(upper);
+    }
+    
+    private void autoMarkAbsentForUnmarkedStudents(Long sessionId, Long sectionId) {
+        // Get all enrolled students for this section
+        List<String> enrolledStudentIds = enrollmentRepository
+                .findBySectionIdAndIsActive(sectionId, true)
+                .stream()
+                .map(enrollment -> enrollment.getUserId())
+                .collect(Collectors.toList());
+        
+        if (enrolledStudentIds.isEmpty()) {
+            System.out.println("[AUTO-ABSENT] No enrolled students for session " + sessionId);
+            return;
+        }
+        
+        // Get students who already have attendance records
+        List<String> markedStudentIds = recordRepository.findBySessionId(sessionId)
+                .stream()
+                .map(record -> record.getUserId())
+                .collect(Collectors.toList());
+        
+        // Find unmarked students
+        List<String> unmarkedStudentIds = enrolledStudentIds.stream()
+                .filter(id -> !markedStudentIds.contains(id))
+                .collect(Collectors.toList());
+        
+        if (unmarkedStudentIds.isEmpty()) {
+            System.out.println("[AUTO-ABSENT] All students already marked for session " + sessionId);
+            return;
+        }
+        
+        System.out.println("[AUTO-ABSENT] Auto-marking " + unmarkedStudentIds.size() + " students as ABSENT for session " + sessionId);
+        
+        // Create ABSENT records for unmarked students
+        for (String studentId : unmarkedStudentIds) {
+            AttendanceRecord record = new AttendanceRecord();
+            record.setSessionId(sessionId);
+            record.setUserId(studentId);
+            record.setStatus(AttendanceStatus.ABSENT);
+            record.setCheckinTime(null); // No check-in time for absent
+            record.setNotes("Auto-marked absent when session closed");
+            recordRepository.save(record);
+        }
+        
+        System.out.println("[AUTO-ABSENT] Successfully marked " + unmarkedStudentIds.size() + " students as ABSENT");
     }
 
     @Transactional(readOnly = true)

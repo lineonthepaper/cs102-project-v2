@@ -3,6 +3,7 @@ package com.smartattendance.controller;
 import com.smartattendance.dto.request.user.CreateStudentRequest;
 import com.smartattendance.dto.response.user.StudentDTO;
 import com.smartattendance.dto.request.user.UpdateEnrollmentRequest;
+import com.smartattendance.dto.request.user.UpdateStudentRequest;
 import com.smartattendance.service.StudentService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -48,6 +49,14 @@ public class StudentController {
         return ResponseEntity.ok(students);
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<StudentDTO> getStudentById(@PathVariable String id) {
+        logger.info("Fetching student by ID: {}", id);
+        StudentDTO student = studentService.getStudentById(id);
+        logger.info("Retrieved student: {} {}", student.getFirstName(), student.getLastName());
+        return ResponseEntity.ok(student);
+    }
+
     @PostMapping
     public ResponseEntity<Map<String, Object>> createStudent(@Valid @RequestBody CreateStudentRequest request) {
         logger.info("Creating student with email: {}", request.getEmail());
@@ -60,6 +69,22 @@ public class StudentController {
         
         logger.info("Student created successfully with ID: {}", student.getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<Map<String, Object>> updateStudent(
+            @PathVariable String id,
+            @Valid @RequestBody UpdateStudentRequest request) {
+        logger.info("Updating student: {}", id);
+        StudentDTO student = studentService.updateStudent(id, request);
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Student updated successfully!");
+        response.put("student", student);
+        
+        logger.info("Student updated successfully: {}", id);
+        return ResponseEntity.ok(response);
     }
 
     @PutMapping("/{id}/enrollments")
@@ -75,6 +100,14 @@ public class StudentController {
         
         logger.info("Enrollments updated successfully for student: {}", id);
         return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Map<String, String>> deleteStudent(@PathVariable String id) {
+        logger.info("Deleting student: {}", id);
+        studentService.deleteStudent(id);
+        logger.info("Student deleted successfully: {}", id);
+        return ResponseEntity.ok(Map.of("message", "Student deleted successfully"));
     }
 }
 

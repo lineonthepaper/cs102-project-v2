@@ -2,6 +2,7 @@ package com.smartattendance.service;
 
 import com.smartattendance.dto.request.user.CreateStudentRequest;
 import com.smartattendance.dto.request.user.UpdateEnrollmentRequest;
+import com.smartattendance.dto.request.user.UpdateStudentRequest;
 import com.smartattendance.dto.response.user.*;
 import com.smartattendance.entity.*;
 import com.smartattendance.exception.DuplicateEmailException;
@@ -95,6 +96,28 @@ public class StudentService {
                         enrollmentsByStudent.getOrDefault(student.getId(), Collections.emptyList())
                 ))
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public StudentDTO getStudentById(String studentId) {
+        logger.debug("Fetching student by ID: {}", studentId);
+        
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Student", studentId));
+        
+        // Verify it's actually a student
+        if (!student.getIsStudent()) {
+            throw new ResourceNotFoundException("Student", studentId);
+        }
+        
+        // Fetch attendance records for this student
+        List<AttendanceRecord> attendanceRecords = attendanceRecordRepository.findByUserIdWithDetails(studentId);
+        
+        // Fetch enrollments for this student
+        List<SectionEnrollment> enrollments = enrollmentRepository.findByUserIdAndIsActive(studentId, true);
+        
+        // Convert to DTO
+        return mapToStudentDTO(student, attendanceRecords, enrollments);
     }
 
     @Transactional
@@ -209,6 +232,84 @@ public class StudentService {
                 enrollmentRepository.save(newEnrollment);
             }
         }
+    }
+
+    @Transactional
+    public StudentDTO updateStudent(String studentId, UpdateStudentRequest request) {
+        logger.info("Updating student: {}", studentId);
+        
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Student", studentId));
+        
+        // Check for email duplicate if email is changing
+        if (!student.getEmail().equals(request.getEmail())) {
+            if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+                logger.warn("Attempted to update student with duplicate email: {}", request.getEmail());
+                throw new DuplicateEmailException("A student with email " + request.getEmail() + " already exists");
+            }
+        }
+        
+        // Update basic fields
+        student.setEmail(request.getEmail());
+        student.setFirstName(request.getFirstName());
+        student.setLastName(request.getLastName());
+        
+        // Update face images if provided
+        if (request.getFaceImages() != null && !request.getFaceImages().isEmpty()) {
+            try {
+                List<String> faceImages = request.getFaceImages().stream()
+                        .map(ImageConverter::base64ToBytes)
+                        .map(ImageConverter::bytesToBase64)
+                        .collect(Collectors.toList());
+
+                if (faceImages.size() > 8) {
+                    throw new IllegalArgumentException("Face images cannot exceed 8 entries");
+                }
+
+                String faceImagesJson = serializeFaceImages(faceImages);
+
+                // Build face profiles (embeddings) from provided images
+                List<FaceProfile> profiles = new ArrayList<>();
+                for (String b64 : faceImages) {
+                    byte[] bytes = ImageConverter.base64ToBytes(b64);
+                    faceRecognitionService.computeEmbedding(bytes).ifPresent(emb -> {
+                        profiles.add(new FaceProfile(emb, OffsetDateTime.now()));
+                    });
+                }
+
+                String faceProfilesJson = objectMapper.writeValueAsString(profiles);
+
+                // Use native SQL to update face images and profiles
+                String sql = "UPDATE users SET face_images = CAST(:faceImages AS jsonb), face_profiles = CAST(:faceProfiles AS jsonb) WHERE id = :id";
+                entityManager.createNativeQuery(sql)
+                        .setParameter("faceImages", faceImagesJson)
+                        .setParameter("faceProfiles", faceProfilesJson)
+                        .setParameter("id", studentId)
+                        .executeUpdate();
+                
+                logger.info("Face images and profiles updated for student: {}", studentId);
+            } catch (Exception e) {
+                logger.error("Failed to update face images for student: {}", studentId, e);
+                throw new RuntimeException("Failed to update face images", e);
+            }
+        }
+        
+        User updatedStudent = userRepository.save(student);
+        logger.info("Student updated successfully: {}", studentId);
+        
+        // Return updated student without full attendance records for performance
+        return mapToStudentSummaryDTO(updatedStudent, Collections.emptyList());
+    }
+
+    @Transactional
+    public void deleteStudent(String studentId) {
+        logger.info("Deleting student: {}", studentId);
+        
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Student", studentId));
+        
+        userRepository.delete(student);
+        logger.info("Student deleted successfully: {}", studentId);
     }
 
     /**

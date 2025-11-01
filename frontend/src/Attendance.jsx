@@ -41,6 +41,7 @@ function Attendance() {
 
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
+  const overlayCanvasRef = useRef(null)
   const scanIntervalRef = useRef(null)
   const faceDetectionIntervalRef = useRef(null)
   const isSendingFrameRef = useRef(false)
@@ -443,6 +444,14 @@ function Attendance() {
           setScannerMessage(msg)
         }
       }
+      
+      // Draw overlay even during scanning if we have a candidate
+      if (result.student && result.boundingBox) {
+        drawOverlay(result.boundingBox, result.similarity, result.student)
+      } else {
+        clearOverlay()
+      }
+      
       return
     }
 
@@ -468,6 +477,84 @@ function Attendance() {
       recommendedCheckInTime: result.recommendedCheckInTime,
       message: result.message || ''
     })
+    
+    // Draw bounding box overlay if available
+    if (result.boundingBox) {
+      drawOverlay(result.boundingBox, result.similarity, student)
+    }
+  }
+
+  const drawOverlay = (bbox, similarity, student) => {
+    if (!overlayCanvasRef.current || !videoRef.current) {
+      return
+    }
+    
+    const overlay = overlayCanvasRef.current
+    const video = videoRef.current
+    const ctx = overlay.getContext('2d')
+    
+    // Use display dimensions (460x345 based on current video styling)
+    const displayWidth = 460
+    const displayHeight = 345
+    overlay.width = displayWidth
+    overlay.height = displayHeight
+    
+    // Clear previous drawing
+    ctx.clearRect(0, 0, overlay.width, overlay.height)
+    
+    if (!bbox) {
+      return
+    }
+    
+    // Scale bounding box from original to display dimensions
+    const scaleX = bbox.originalWidth ? displayWidth / bbox.originalWidth : 1
+    const scaleY = bbox.originalHeight ? displayHeight / bbox.originalHeight : 1
+    
+    const x = bbox.x * scaleX
+    const y = bbox.y * scaleY
+    const width = bbox.width * scaleX
+    const height = bbox.height * scaleY
+    
+    // Draw bounding box
+    ctx.strokeStyle = '#00ff00'
+    ctx.lineWidth = 2
+    ctx.strokeRect(x, y, width, height)
+    
+    // Prepare name text
+    const firstName = student?.firstName || 'Unknown'
+    const lastName = student?.lastName || ''
+    const nameText = `${firstName} ${lastName}`.trim()
+    const matchText = `${Math.round(similarity * 100)}%`
+    
+    // Draw name label (above)
+    ctx.font = 'bold 13px sans-serif'
+    const nameMetrics = ctx.measureText(nameText)
+    const nameWidth = nameMetrics.width + 8
+    const nameHeight = 20
+    
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.9)'
+    ctx.fillRect(x, y - nameHeight - 2, nameWidth, nameHeight)
+    ctx.fillStyle = '#000'
+    ctx.fillText(nameText, x + 4, y - 6)
+    
+    // Draw match label (below)
+    ctx.font = '11px sans-serif'
+    const matchMetrics = ctx.measureText(matchText)
+    const matchWidth = matchMetrics.width + 8
+    const matchHeight = 18
+    
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.9)'
+    ctx.fillRect(x, y + height + 2, matchWidth, matchHeight)
+    ctx.fillStyle = '#000'
+    ctx.fillText(matchText, x + 4, y + height + 14)
+  }
+  
+  const clearOverlay = () => {
+    if (!overlayCanvasRef.current) {
+      return
+    }
+    const ctx = overlayCanvasRef.current.getContext('2d')
+    ctx.clearRect(0, 0, overlayCanvasRef.current.width, overlayCanvasRef.current.height)
   }
 
   const resetScannerForNextStudent = () => {
@@ -477,6 +564,7 @@ function Attendance() {
     setIsScannerActive(false)
     setIsFaceDetected(false)
     setScannerMessage('Waiting for face detection...')
+    clearOverlay()
     
     // Restart face detection loop
     startFaceDetection()
@@ -1209,9 +1297,9 @@ function Attendance() {
             className="modal-content scanner-modal"
             onClick={(e) => e.stopPropagation()}
             style={{
-              maxWidth: 820,
+              maxWidth: 900,
               minWidth: 350,
-              width: '96vw',
+              width: '90vw',
               padding: 28,
               borderRadius: 14,
               background: '#ffffff',
@@ -1224,13 +1312,14 @@ function Attendance() {
           >
             {/* Camera Section - minimal, black background, no heavy border */}
             <div style={{
-              flex: '1 1 330px', maxWidth: 380, minWidth: 240,
+              flex: '1 1 400px', maxWidth: 480, minWidth: 240,
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             }}>
-        <div style={{ background: '#111', borderRadius: 10, padding: 6, border: '1px solid #1f1f1f' }}>
-          <video ref={videoRef} className="scanner-video" autoPlay playsInline muted style={{ width: 340, height: 255, background: '#000', borderRadius: 8, objectFit: 'cover', boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }} />
-                <canvas ref={canvasRef} style={{ display: 'none' }} />
-              </div>
+        <div style={{ background: '#111', borderRadius: 10, padding: 6, border: '1px solid #1f1f1f', position: 'relative' }}>
+          <video ref={videoRef} className="scanner-video" autoPlay playsInline muted style={{ width: 460, height: 345, background: '#000', borderRadius: 8, objectFit: 'cover', boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }} />
+          <canvas ref={overlayCanvasRef} style={{ position: 'absolute', top: 6, left: 6, width: 460, height: 345, pointerEvents: 'none', borderRadius: 8 }} />
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
+        </div>
         {!isScannerActive && !recognizedCandidate && (
           <button
             style={{
