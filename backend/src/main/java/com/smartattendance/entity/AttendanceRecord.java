@@ -6,10 +6,9 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import java.time.LocalDateTime;
 import java.time.Duration;
-import com.smartattendance.util.constants.AttendanceConstants;
 import com.smartattendance.util.converter.AttendanceStatusConverter;
 
-@Getter  // Only generate getters
+@Getter 
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
@@ -32,7 +31,7 @@ public class AttendanceRecord {
 
     @Column(name = "status")
     @Convert(converter = AttendanceStatusConverter.class)
-    private AttendanceStatus status;  // Changed from String to AttendanceStatus enum
+    private AttendanceStatus status;  
 
     @Column(name = "checkin_time")
     private LocalDateTime checkinTime;
@@ -42,8 +41,6 @@ public class AttendanceRecord {
 
     @Column(name = "notes")
     private String notes;
-
-    // ===== VALIDATED SETTERS (ISP Fix) =====
     
     public void setId(Long id) {
         this.id = id;
@@ -87,7 +84,6 @@ public class AttendanceRecord {
     
     /**
      * Check if this attendance record indicates the student was late.
-     * Now using type-safe enum instead of string comparison.
      */
     public boolean isLate() {
         return status != null && status.isLate();
@@ -95,7 +91,6 @@ public class AttendanceRecord {
     
     /**
      * Check if this attendance record indicates the student was present (on time or late).
-     * Now using type-safe enum instead of string comparison.
      */
     public boolean isPresent() {
         return status != null && status.isPresent();
@@ -103,7 +98,6 @@ public class AttendanceRecord {
     
     /**
      * Check if this attendance record indicates the student was absent.
-     * Now using type-safe enum instead of string comparison.
      */
     public boolean isAbsent() {
         return status != null && status.isAbsent();
@@ -125,7 +119,6 @@ public class AttendanceRecord {
     
     /**
      * Mark the student as present.
-     * Now using type-safe enum instead of string constant.
      * @param time the check-in time
      */
     public void markPresent(LocalDateTime time) {
@@ -135,7 +128,6 @@ public class AttendanceRecord {
     
     /**
      * Mark the student as late.
-     * Now using type-safe enum instead of string constant.
      * @param time the check-in time
      */
     public void markLate(LocalDateTime time) {
@@ -145,7 +137,6 @@ public class AttendanceRecord {
     
     /**
      * Mark the student as absent.
-     * Now using type-safe enum instead of string constant.
      */
     public void markAbsent() {
         this.status = AttendanceStatus.ABSENT;  // Type-safe enum

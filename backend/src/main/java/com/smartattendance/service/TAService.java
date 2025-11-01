@@ -2,10 +2,7 @@ package com.smartattendance.service;
 
 import com.smartattendance.dto.request.user.AddTARequest;
 import com.smartattendance.dto.request.user.UpdateTAAssignmentsRequest;
-import com.smartattendance.dto.response.attendance.*;
-import com.smartattendance.dto.response.course.*;
 import com.smartattendance.dto.response.user.*;
-import com.smartattendance.dto.response.auth.*;
 import com.smartattendance.entity.*;
 import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.exception.InvalidRequestException;
@@ -34,16 +31,12 @@ public class TAService {
 
     private final UserRepository userRepository;
     private final TAAssignmentRepository taAssignmentRepository;
-    private final SectionRepository sectionRepository;
-    private final CourseRepository courseRepository;
     private final EntityMapper mapper;
 
     public TAService(UserRepository userRepository, TAAssignmentRepository taAssignmentRepository,
-                    SectionRepository sectionRepository, CourseRepository courseRepository, EntityMapper mapper) {
+                    EntityMapper mapper) {
         this.userRepository = userRepository;
         this.taAssignmentRepository = taAssignmentRepository;
-        this.sectionRepository = sectionRepository;
-        this.courseRepository = courseRepository;
         this.mapper = mapper;
     }
 
@@ -127,7 +120,7 @@ public class TAService {
     public void updateTAAssignments(String userId, UpdateTAAssignmentsRequest request) {
         try {
             // Verify TA exists
-            User ta = userRepository.findById(userId)
+            userRepository.findById(userId)
                     .orElseThrow(() -> new ResourceNotFoundException("TA", userId));
     
             // Delete existing assignments

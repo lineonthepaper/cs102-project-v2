@@ -1,18 +1,8 @@
 package com.smartattendance.entity;
 
-/**
- * Enumeration representing attendance status.
- * Replaces "stringly-typed" status strings with type-safe enum.
- * 
- * This addresses primitive obsession by replacing:
- * - String status = "PRESENT" with AttendanceStatus.PRESENT
- * 
- * Benefits:
- * - Type safety (can't accidentally use invalid status)
- * - Compile-time checking
- * - Encapsulated behavior (isPresent(), isLate(), etc.)
- * - Better IDE support (autocomplete, refactoring)
- */
+import lombok.Getter;
+
+@Getter
 public enum AttendanceStatus {
     PRESENT("PRESENT", "Present"),
     LATE("LATE", "Late"),
@@ -24,14 +14,6 @@ public enum AttendanceStatus {
     AttendanceStatus(String code, String displayName) {
         this.code = code;
         this.displayName = displayName;
-    }
-    
-    public String getCode() {
-        return code;
-    }
-    
-    public String getDisplayName() {
-        return displayName;
     }
     
     /**

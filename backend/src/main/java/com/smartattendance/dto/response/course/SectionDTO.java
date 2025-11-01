@@ -6,11 +6,6 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import java.time.LocalTime;
 
-/**
- * Data Transfer Object for Section.
- * 
- * FIXED: Added validation annotations (Phase 3)
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

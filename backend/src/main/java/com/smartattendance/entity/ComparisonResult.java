@@ -1,4 +1,5 @@
 package com.smartattendance.entity;
+
 public class ComparisonResult {
 
     private final String faceName;

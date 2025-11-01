@@ -1,14 +1,11 @@
 package com.smartattendance.entity;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 
-/**
- * Base class for all assignment entities (Instructor assignments, TA assignments).
- * This implements the DRY principle by extracting common fields and behavior.
- * 
- * Uses JPA's @MappedSuperclass to allow subclasses to inherit these fields
- * without creating a separate table for this base class.
- */
+@Getter
+@Setter
 @MappedSuperclass
 public abstract class BaseAssignment {
 
@@ -76,40 +73,6 @@ public abstract class BaseAssignment {
             ? section.getSectionCode() 
             : "Section " + sectionId;
         return getAssignmentType() + " assignment for " + sectionCode;
-    }
-
-    // ===== GETTERS AND SETTERS =====
-    
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getUserId() {
-        return userId;
-    }
-
-    public void setUserId(String userId) {
-        this.userId = userId;
-    }
-
-    public Long getSectionId() {
-        return sectionId;
-    }
-
-    public void setSectionId(Long sectionId) {
-        this.sectionId = sectionId;
-    }
-
-    public Section getSection() {
-        return section;
-    }
-
-    public void setSection(Section section) {
-        this.section = section;
     }
 }
 

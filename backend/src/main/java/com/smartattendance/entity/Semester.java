@@ -1,14 +1,8 @@
 package com.smartattendance.entity;
 
-/**
- * Enumeration representing academic semesters.
- * Replaces primitive Integer values (1, 2, 3) with type-safe enum.
- * 
- * This addresses primitive obsession anti-pattern and provides:
- * - Type safety (can't accidentally use invalid semester values)
- * - Self-documenting code (Semester.FALL vs integer 1)
- * - Encapsulated behavior (display names, validation)
- */
+import lombok.Getter;
+
+@Getter
 public enum Semester {
     FALL(1, "Fall"),
     SPRING(2, "Spring"),
@@ -20,14 +14,6 @@ public enum Semester {
     Semester(int value, String displayName) {
         this.value = value;
         this.displayName = displayName;
-    }
-    
-    public int getValue() {
-        return value;
-    }
-    
-    public String getDisplayName() {
-        return displayName;
     }
     
     /**

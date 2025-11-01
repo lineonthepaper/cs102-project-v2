@@ -6,7 +6,6 @@ import com.smartattendance.dto.response.attendance.AttendanceRecordResponseDTO;
 import com.smartattendance.dto.response.attendance.AttendanceSessionResponseDTO;
 import com.smartattendance.entity.*;
 import com.smartattendance.exception.InvalidRequestException;
-import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
 import com.smartattendance.service.strategy.AttendanceStrategyFactory;
 import com.smartattendance.service.strategy.AttendanceMarkingStrategy;
@@ -27,8 +26,6 @@ public class AttendanceService {
     private final AttendanceSessionRepository sessionRepository;
     private final AttendanceRecordRepository recordRepository;
     private final SectionRepository sectionRepository;
-    private final SectionEnrollmentRepository enrollmentRepository;
-    private final EntityMapper mapper;
     private final AttendanceStrategyFactory strategyFactory;
     private final SessionRecognitionManager recognitionManager;
 
@@ -36,15 +33,11 @@ public class AttendanceService {
             AttendanceSessionRepository sessionRepository,
             AttendanceRecordRepository recordRepository,
             SectionRepository sectionRepository,
-            SectionEnrollmentRepository enrollmentRepository,
-            EntityMapper mapper,
             AttendanceStrategyFactory strategyFactory,
             SessionRecognitionManager recognitionManager) {
         this.sessionRepository = sessionRepository;
         this.recordRepository = recordRepository;
         this.sectionRepository = sectionRepository;
-        this.enrollmentRepository = enrollmentRepository;
-        this.mapper = mapper;
         this.strategyFactory = strategyFactory;
         this.recognitionManager = recognitionManager;
     }

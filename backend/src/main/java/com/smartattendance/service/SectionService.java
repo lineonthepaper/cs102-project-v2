@@ -6,7 +6,6 @@ import com.smartattendance.entity.Section;
 import com.smartattendance.entity.SectionEnrollment;
 import com.smartattendance.entity.Semester;
 import com.smartattendance.entity.User;
-import com.smartattendance.exception.InvalidRequestException;
 import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
@@ -16,7 +15,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -32,25 +30,16 @@ public class SectionService {
 
     private final SectionRepository sectionRepository;
     private final SectionEnrollmentRepository enrollmentRepository;
-    private final AttendanceSessionRepository attendanceSessionRepository;
-    private final SectionAssignmentRepository sectionAssignmentRepository;
-    private final TAAssignmentRepository taAssignmentRepository;
     private final UserRepository userRepository;
     private final EntityMapper mapper;
 
     public SectionService(
             SectionRepository sectionRepository,
             SectionEnrollmentRepository enrollmentRepository,
-            AttendanceSessionRepository attendanceSessionRepository,
-            SectionAssignmentRepository sectionAssignmentRepository,
-            TAAssignmentRepository taAssignmentRepository,
             UserRepository userRepository,
             EntityMapper mapper) {
         this.sectionRepository = sectionRepository;
         this.enrollmentRepository = enrollmentRepository;
-        this.attendanceSessionRepository = attendanceSessionRepository;
-        this.sectionAssignmentRepository = sectionAssignmentRepository;
-        this.taAssignmentRepository = taAssignmentRepository;
         this.userRepository = userRepository;
         this.mapper = mapper;
     }

@@ -2,10 +2,7 @@ package com.smartattendance.service;
 
 import com.smartattendance.dto.request.user.CreateStudentRequest;
 import com.smartattendance.dto.request.user.UpdateEnrollmentRequest;
-import com.smartattendance.dto.response.attendance.*;
-import com.smartattendance.dto.response.course.*;
 import com.smartattendance.dto.response.user.*;
-import com.smartattendance.dto.response.auth.*;
 import com.smartattendance.entity.*;
 import com.smartattendance.exception.DuplicateEmailException;
 import com.smartattendance.exception.ResourceNotFoundException;
@@ -39,7 +36,6 @@ public class StudentService {
     private final AttendanceRecordRepository attendanceRecordRepository;
     private final AttendanceSessionRepository attendanceSessionRepository;
     private final SectionEnrollmentRepository enrollmentRepository;
-    private final CourseRepository courseRepository;
     private final SectionRepository sectionRepository;
     private final EntityMapper mapper;
     private final ObjectMapper objectMapper;
@@ -50,7 +46,6 @@ public class StudentService {
             AttendanceRecordRepository attendanceRecordRepository,
             AttendanceSessionRepository attendanceSessionRepository,
             SectionEnrollmentRepository enrollmentRepository,
-            CourseRepository courseRepository,
             SectionRepository sectionRepository,
             EntityMapper mapper,
             ObjectMapper objectMapper,
@@ -59,7 +54,6 @@ public class StudentService {
         this.attendanceRecordRepository = attendanceRecordRepository;
         this.attendanceSessionRepository = attendanceSessionRepository;
         this.enrollmentRepository = enrollmentRepository;
-        this.courseRepository = courseRepository;
         this.sectionRepository = sectionRepository;
         this.mapper = mapper;
         this.objectMapper = objectMapper;
@@ -77,10 +71,7 @@ public class StudentService {
         
         logger.debug("Found {} students in database", students.size());
 
-        // FIXED: Using ServiceUtils to eliminate code duplication (DRY principle)
-        // Fetch attendance records for all students
-        List<String> studentIds = ServiceUtils.extractIds(students, User::getId);
-        
+        // Fetch attendance records for all students        
         Map<String, List<AttendanceRecord>> attendanceByStudent = ServiceUtils.fetchAndGroupRelated(
             students,
             User::getId,
@@ -176,7 +167,7 @@ public class StudentService {
         logger.info("Updating enrollments for student: {}", studentId);
         
         // Verify student exists
-        User student = userRepository.findById(studentId)
+        userRepository.findById(studentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Student", studentId));
 
         Set<Long> newSectionIds = new HashSet<>(request.getSectionIds());
@@ -240,8 +231,6 @@ public class StudentService {
         
         // If filtering by section or course, filter students by enrollment
         if (sectionId != null || courseId != null) {
-            List<String> studentIds = ServiceUtils.extractIds(students, User::getId);
-            
             // Get enrollments
             Map<String, List<SectionEnrollment>> enrollmentsByStudent = ServiceUtils.fetchAndGroupRelated(
                 students,
@@ -275,7 +264,6 @@ public class StudentService {
         }
         
         // Fetch attendance records for filtered students
-        List<String> studentIds = ServiceUtils.extractIds(students, User::getId);
         Map<String, List<AttendanceRecord>> attendanceByStudent = ServiceUtils.fetchAndGroupRelated(
             students,
             User::getId,
