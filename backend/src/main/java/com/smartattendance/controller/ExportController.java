@@ -13,24 +13,24 @@ import java.io.IOException;
 @RestController
 @RequestMapping("/api/export")
 public class ExportController {
-    
+
     @Autowired
     private FullDatabaseExportService fullDatabaseExportService;
-    
-    @GetMapping("/full-database")
-    public ResponseEntity<byte[]> exportFullDatabase() {
+
+    @GetMapping("/full-database-zip")
+    public ResponseEntity<byte[]> exportFullDatabaseAsZip() {
         try {
-            String csvData = fullDatabaseExportService.exportEntireDatabase();
-            
+            byte[] zipData = fullDatabaseExportService.exportEntireDatabaseAsZip();
+
             HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.parseMediaType("text/csv"));
-            headers.setContentDispositionFormData("attachment", "complete_database_export.csv");
+            headers.setContentType(MediaType.parseMediaType("application/zip"));
+            headers.setContentDispositionFormData("attachment", "complete_database_export.zip");
             headers.setCacheControl("no-cache, no-store, must-revalidate");
-            
+
             return ResponseEntity.ok()
                     .headers(headers)
-                    .body(csvData.getBytes());
-                    
+                    .body(zipData);
+
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
