@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-@Getter  // Only generate getters
+@Getter 
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity

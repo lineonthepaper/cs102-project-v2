@@ -3,13 +3,7 @@ package com.smartattendance.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 
-/**
- * Represents an instructor's assignment to a section.
- * Extends BaseAssignment to inherit common assignment functionality.
- * 
- * FIXED: Added @Getter and validated setters (ISP compliance)
- */
-@Getter  // Generate getters
+@Getter 
 @Entity
 @Table(name = "section_assignments")
 public class SectionAssignment extends BaseAssignment {

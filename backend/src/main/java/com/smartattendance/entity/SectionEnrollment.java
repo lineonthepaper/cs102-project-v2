@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 import java.time.Duration;
 import com.smartattendance.util.constants.AttendanceConstants;
 
-@Getter  // Only generate getters
+@Getter 
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity

@@ -6,7 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import com.smartattendance.util.constants.AttendanceConstants;
 
-@Getter  // Only generate getters
+@Getter 
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity

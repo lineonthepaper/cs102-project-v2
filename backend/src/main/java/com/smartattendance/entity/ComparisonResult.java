@@ -1,4 +1,5 @@
 package com.smartattendance.entity;
+
 public class ComparisonResult {
     public String faceName;
     public float similarity;
