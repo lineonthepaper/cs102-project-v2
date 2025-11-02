@@ -68,6 +68,12 @@ public class AttendanceService {
             session.setNotes(request.getNotes());
     
             AttendanceSession savedSession = sessionRepository.save(session);
+            
+            // Auto-mark absent if session is created with ended status
+            if (isEndedStatus(request.getStatus())) {
+                autoMarkAbsentForUnmarkedStudents(savedSession.getId(), request.getSectionId());
+            }
+            
             return mapToSessionDTO(savedSession);
         } catch (Exception e) {
             e.printStackTrace();
@@ -75,6 +81,57 @@ public class AttendanceService {
         }
     }
 
+    @Transactional
+    public AttendanceSessionResponseDTO reopenSession(Long id) {
+        try {
+            AttendanceSession session = sessionRepository.findById(id)
+                    .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
+            
+            session.reopen();
+            AttendanceSession reopenedSession = sessionRepository.save(session);
+            return mapToSessionDTO(reopenedSession);
+        } catch (IllegalStateException e) {
+            throw new InvalidRequestException(e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new InvalidRequestException("Session could not be reopened.");
+        }
+    }
+    
+    @Transactional
+    public AttendanceSessionResponseDTO archiveSession(Long id) {
+        try {
+            AttendanceSession session = sessionRepository.findById(id)
+                    .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
+            
+            session.archive();
+            AttendanceSession archivedSession = sessionRepository.save(session);
+            return mapToSessionDTO(archivedSession);
+        } catch (IllegalStateException e) {
+            throw new InvalidRequestException(e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new InvalidRequestException("Session could not be archived.");
+        }
+    }
+    
+    @Transactional
+    public AttendanceSessionResponseDTO cancelSession(Long id) {
+        try {
+            AttendanceSession session = sessionRepository.findById(id)
+                    .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
+            
+            session.cancel();
+            AttendanceSession cancelledSession = sessionRepository.save(session);
+            return mapToSessionDTO(cancelledSession);
+        } catch (IllegalStateException e) {
+            throw new InvalidRequestException(e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new InvalidRequestException("Session could not be cancelled.");
+        }
+    }
+    
     @Transactional
     public AttendanceSessionResponseDTO updateSession(Long id, CreateAttendanceSessionRequest request) {
         try{
@@ -225,7 +282,8 @@ public class AttendanceService {
         dto.setSessionDate(session.getSessionDate().toString());
         dto.setScheduledStartTime(session.getScheduledStartTime().toString());
         dto.setScheduledEndTime(session.getScheduledEndTime().toString());
-        dto.setStatus(session.getStatus());
+        // Use automatic status based on current date/time
+        dto.setStatus(session.getAutomaticStatus());
         dto.setNotes(session.getNotes());
 
         // Fetch section info

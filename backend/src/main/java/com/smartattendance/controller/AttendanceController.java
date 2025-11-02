@@ -52,6 +52,24 @@ public class AttendanceController {
         return ResponseEntity.ok(session);
     }
 
+    @PostMapping("/sessions/{id}/reopen")
+    public ResponseEntity<?> reopenSession(@PathVariable Long id) {
+        AttendanceSessionResponseDTO session = attendanceService.reopenSession(id);
+        return ResponseEntity.ok(session);
+    }
+
+    @PostMapping("/sessions/{id}/archive")
+    public ResponseEntity<?> archiveSession(@PathVariable Long id) {
+        AttendanceSessionResponseDTO session = attendanceService.archiveSession(id);
+        return ResponseEntity.ok(session);
+    }
+
+    @PostMapping("/sessions/{id}/cancel")
+    public ResponseEntity<?> cancelSession(@PathVariable Long id) {
+        AttendanceSessionResponseDTO session = attendanceService.cancelSession(id);
+        return ResponseEntity.ok(session);
+    }
+
     @GetMapping("/sessions/{id}/records")
     public ResponseEntity<List<AttendanceRecordResponseDTO>> getSessionRecords(
             @PathVariable Long id) {

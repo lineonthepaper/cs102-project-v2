@@ -1,6 +1,7 @@
 package com.smartattendance.dto.response.attendance;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 /**
  * Response model returned after processing a face scan.
@@ -15,6 +16,7 @@ public class FaceScanResponseDTO {
     private OffsetDateTime recommendedCheckInTime;
     private String message;
     private BoundingBoxDTO boundingBox;
+    private List<FaceDetectionDTO> allDetections;
 
     public boolean isMatched() {
         return matched;
@@ -78,6 +80,14 @@ public class FaceScanResponseDTO {
 
     public void setBoundingBox(BoundingBoxDTO boundingBox) {
         this.boundingBox = boundingBox;
+    }
+
+    public List<FaceDetectionDTO> getAllDetections() {
+        return allDetections;
+    }
+
+    public void setAllDetections(List<FaceDetectionDTO> allDetections) {
+        this.allDetections = allDetections;
     }
 }
 

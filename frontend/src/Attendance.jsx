@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabase'
 
@@ -13,6 +13,7 @@ function Attendance() {
   const [sectionList, setSectionList] = useState([])
   const [sessionList, setSessionList] = useState([])
   const [filteredSessions, setFilteredSessions] = useState([])
+  const [activeTab, setActiveTab] = useState('active') // 'active' or 'archived'
   const [showSessionModal, setShowSessionModal] = useState(false)
   const [editingSession, setEditingSession] = useState(null)
   const [sessionForm, setSessionForm] = useState({
@@ -33,21 +34,20 @@ function Attendance() {
 
   // Scanner State
   const [showScannerModal, setShowScannerModal] = useState(false)
-  const [scannerMessage, setScannerMessage] = useState('Click Start to begin scanning.')
+  const [scannerMessage, setScannerMessage] = useState('Starting camera...')
   const [scannerError, setScannerError] = useState('')
   const [recognizedCandidate, setRecognizedCandidate] = useState(null)
   const [isScannerActive, setIsScannerActive] = useState(false)
-  const [isFaceDetected, setIsFaceDetected] = useState(false)
 
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const overlayCanvasRef = useRef(null)
   const scanIntervalRef = useRef(null)
-  const faceDetectionIntervalRef = useRef(null)
   const isSendingFrameRef = useRef(false)
-  const isCheckingFaceRef = useRef(false)
   const skippedStudentsRef = useRef(new Map())
   const isScanningRef = useRef(false)
+  const recognizedCandidateRef = useRef(null)
+  const lastResponseIdRef = useRef(0)
 
   // Search and Filter State (Sessions)
   const [searchTerm, setSearchTerm] = useState('')
@@ -66,31 +66,44 @@ function Attendance() {
   const [markingSearchTerm, setMarkingSearchTerm] = useState('')
   const [statusFilterMarking, setStatusFilterMarking] = useState('all')
 
+  // Get unique sections (no duplicates from different years/semesters)
+  const uniqueSections = useMemo(() => {
+    const seen = new Set()
+    return sectionList.filter(section => {
+      if (seen.has(section.section_code)) {
+        return false
+      }
+      seen.add(section.section_code)
+      return true
+    })
+  }, [sectionList])
+
   useEffect(() => {
     fetchInitialData()
   }, [])
 
   useEffect(() => {
     filterAndSortSessions()
-  }, [sessionList, searchTerm, sortBy, sortOrder, sectionFilter, yearFilter, semesterFilter, statusFilterSessions])
+  }, [sessionList, searchTerm, sortBy, sortOrder, sectionFilter, yearFilter, semesterFilter, statusFilterSessions, activeTab])
 
   useEffect(() => {
     filterStudents()
   }, [students, markingSearchTerm, statusFilterMarking, attendanceRecords])
 
   useEffect(() => {
+    // Sync recognizedCandidate ref with state
+    recognizedCandidateRef.current = recognizedCandidate
+  }, [recognizedCandidate])
+  
+  useEffect(() => {
     if (!showScannerModal) {
       stopCamera()
-      stopFaceDetection()
       return
     }
-    // Always show live preview when modal opens (no scanning yet)
-    startPreview()
-    // Start face detection loop for button enabling
-    startFaceDetection()
+    // Start camera and immediately begin scanning when modal opens
+    startCamera()
     return () => {
       stopCamera()
-      stopFaceDetection()
     }
   }, [showScannerModal])
 
@@ -109,6 +122,13 @@ function Attendance() {
 
   const filterAndSortSessions = () => {
     let filtered = [...sessionList]
+
+    // Filter by archive status based on activeTab
+    if (activeTab === 'archived') {
+      filtered = filtered.filter(s => s.status === 'ARCHIVED')
+    } else {
+      filtered = filtered.filter(s => s.status !== 'ARCHIVED')
+    }
 
     // Apply search filter
     if (searchTerm) {
@@ -188,11 +208,10 @@ function Attendance() {
   const openScannerModal = () => {
     if (!selectedSession) return
     setScannerError('')
-    setScannerMessage('Waiting for face detection...')
+    setScannerMessage('Starting camera...')
     setRecognizedCandidate(null)
     setShowScannerModal(true)
     setIsScannerActive(false)
-    setIsFaceDetected(false)
   }
 
   const closeScannerModal = () => {
@@ -202,118 +221,38 @@ function Attendance() {
       tracks.forEach(track => track.stop())
       videoRef.current.srcObject = null
     }
-    stopFaceDetection()
     setShowScannerModal(false)
     setRecognizedCandidate(null)
-    setScannerMessage('Waiting for face detection...')
+    setScannerMessage('Starting camera...')
     setScannerError('')
     setIsScannerActive(false)
-    setIsFaceDetected(false)
-  }
-
-  const startPreview = async () => {
-    if (!showScannerModal) return
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setScannerError('Camera access is not supported in this browser.')
-      setShowScannerModal(false)
-      return
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20 } } })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
-      }
-      setScannerMessage('Waiting for face detection...')
-    } catch (error) {
-      console.error('Unable to access camera:', error)
-      setScannerError('Unable to access camera. Please check permissions and try again.')
-      setShowScannerModal(false)
-    }
-  }
-
-  const startFaceDetection = () => {
-    if (faceDetectionIntervalRef.current) return
-    faceDetectionIntervalRef.current = setInterval(checkForFace, 500) // Check every 500ms
-  }
-
-  const stopFaceDetection = () => {
-    if (faceDetectionIntervalRef.current) {
-      clearInterval(faceDetectionIntervalRef.current)
-      faceDetectionIntervalRef.current = null
-    }
-    isCheckingFaceRef.current = false
-  }
-
-  const checkForFace = async () => {
-    // Don't check if already scanning or if already checking
-    if (isScanningRef.current || isCheckingFaceRef.current || !showScannerModal) {
-      return
-    }
-
-    if (!videoRef.current || !canvasRef.current) {
-      return
-    }
-
-    const video = videoRef.current
-    if (video.readyState < 2) {
-      return
-    }
-
-    isCheckingFaceRef.current = true
-
-    try {
-      const canvas = canvasRef.current
-      const context = canvas.getContext('2d')
-      const srcW = video.videoWidth || 640
-      const srcH = video.videoHeight || 480
-      const targetW = Math.min(480, srcW)
-      const scale = targetW / srcW
-      const targetH = Math.round(srcH * scale)
-      canvas.width = targetW
-      canvas.height = targetH
-      context.drawImage(video, 0, 0, targetW, targetH)
-
-      const imageData = canvas.toDataURL('image/jpeg', 0.5)
-
-      // Simple face detection check
-      const response = await fetch(`${API_BASE_URL}/api/face/detect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageData })
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        const faceDetected = result.faceDetected || false
-        setIsFaceDetected(faceDetected)
-        
-        if (faceDetected) {
-          setScannerMessage('Face detected. Click Start to begin scanning.')
-        } else {
-          setScannerMessage('Waiting for face detection...')
-        }
-      }
-    } catch (error) {
-      console.error('Face detection check error:', error)
-      // Don't show errors for face detection, just keep trying
-    } finally {
-      isCheckingFaceRef.current = false
-    }
   }
 
   const startCamera = async () => {
     if (!showScannerModal) return
     
-    // Stop face detection when actual scanning starts
-    stopFaceDetection()
-    
-    // Ensure camera is running (restart if needed)
+    // Ensure camera is running (start if needed)
     if (!videoRef.current?.srcObject || videoRef.current.paused) {
-      await startPreview()
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setScannerError('Camera access is not supported in this browser.')
+        setShowScannerModal(false)
+        return
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20 } } })
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          await videoRef.current.play()
+        }
+      } catch (error) {
+        console.error('Unable to access camera:', error)
+        setScannerError('Unable to access camera. Please check permissions and try again.')
+        setShowScannerModal(false)
+        return
+      }
     }
     
-    setScannerMessage('Scanning faces... Please look at the camera.')
+    setScannerMessage('Scanning faces...')
     setIsScannerActive(true)
     isScanningRef.current = true
     startFrameLoop()
@@ -360,8 +299,13 @@ function Attendance() {
   }
 
   const captureAndSendFrame = async () => {
-    // Don't send frames if not actively scanning or if we already have a match
-    if (!isScanningRef.current || recognizedCandidate) {
+    // Don't send frames if not actively scanning
+    if (!isScanningRef.current) {
+      return
+    }
+    
+    // Don't send if we already have a candidate to prevent duplicates
+    if (recognizedCandidateRef.current) {
       return
     }
     
@@ -391,6 +335,7 @@ function Attendance() {
 
     const imageData = canvas.toDataURL('image/jpeg', 0.5)
     isSendingFrameRef.current = true
+    const thisRequestId = ++lastResponseIdRef.current
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/attendance/sessions/${selectedSession.id}/scan`, {
@@ -404,7 +349,10 @@ function Attendance() {
       }
 
       const result = await response.json()
-      handleScanResponse(result)
+      // Only process if this is the most recent request
+      if (thisRequestId === lastResponseIdRef.current) {
+        handleScanResponse(result)
+      }
     } catch (error) {
       console.error('Face scan error:', error)
       setScannerError('Unable to process the camera feed. Please adjust the camera and try again.')
@@ -435,18 +383,30 @@ function Attendance() {
         if (msg.toLowerCase().includes('scanning')) {
           setScannerMessage('Scanning... Keep your face in view.')
         } else if (msg.toLowerCase().includes('no valid frames') || msg.toLowerCase().includes('no clear match')) {
-          setScannerMessage('No match found. Click Start to try again.')
-          stopCamera()
+          setScannerMessage('No match found. Please look at the camera.')
+          // Don't stop camera - keep scanning
         } else if (msg.toLowerCase().includes('please')) {
           setScannerMessage(msg)
-          stopCamera()
+          // Don't stop camera - keep scanning
         } else {
           setScannerMessage(msg)
         }
       }
       
-      // Draw overlay even during scanning if we have a candidate
-      if (result.student && result.boundingBox) {
+      // Draw overlays for all detected faces
+      if (result.allDetections && result.allDetections.length > 0) {
+        // Deduplicate by student ID (in case backend sends same person multiple times)
+        const uniqueDetections = []
+        const seenIds = new Set()
+        for (const det of result.allDetections) {
+          if (det.student?.id && !seenIds.has(det.student.id)) {
+            seenIds.add(det.student.id)
+            uniqueDetections.push(det)
+          }
+        }
+        drawMultiOverlay(uniqueDetections)
+      } else if (result.student && result.boundingBox) {
+        // Fallback to single overlay for backwards compatibility
         drawOverlay(result.boundingBox, result.similarity, result.student)
       } else {
         clearOverlay()
@@ -464,12 +424,10 @@ function Attendance() {
       return
     }
 
-    // Stop scanning completely when match found
-    stopFrameLoop()
-    isScanningRef.current = false
-    setIsScannerActive(false)
+    // Don't stop scanning - just show confirmation modal
+    // Scanning continues in background
     setScannerError('')
-    setScannerMessage('Match found. Confirm the student details below.')
+    setScannerMessage('Match found - please confirm')
     setRecognizedCandidate({
       student,
       similarity: result.similarity,
@@ -484,6 +442,76 @@ function Attendance() {
     }
   }
 
+  const drawMultiOverlay = (detections) => {
+    if (!overlayCanvasRef.current || !videoRef.current) {
+      return
+    }
+    
+    const overlay = overlayCanvasRef.current
+    const video = videoRef.current
+    const ctx = overlay.getContext('2d')
+    
+    // Get actual display dimensions from video
+    const displayWidth = video.offsetWidth || video.videoWidth || 640
+    const displayHeight = video.offsetHeight || video.videoHeight || 480
+    overlay.width = displayWidth
+    overlay.height = displayHeight
+    
+    // Setting width/height automatically clears the canvas, but ensure it's cleared
+    ctx.clearRect(0, 0, overlay.width, overlay.height)
+    
+    // Draw each detection
+    for (const detection of detections) {
+      if (!detection.boundingBox || !detection.student) continue
+      
+      const bbox = detection.boundingBox
+      const student = detection.student
+      const similarity = detection.similarity || 0
+      
+      // Scale bounding box from original to display dimensions
+      const scaleX = bbox.originalWidth ? displayWidth / bbox.originalWidth : 1
+      const scaleY = bbox.originalHeight ? displayHeight / bbox.originalHeight : 1
+      
+      const x = bbox.x * scaleX
+      const y = bbox.y * scaleY
+      const width = bbox.width * scaleX
+      const height = bbox.height * scaleY
+      
+      // Draw bounding box with thicker line
+      ctx.strokeStyle = '#00ff00'
+      ctx.lineWidth = 4
+      ctx.strokeRect(x, y, width, height)
+      
+      // Prepare name text
+      const firstName = student?.firstName || 'Unknown'
+      const lastName = student?.lastName || ''
+      const nameText = `${firstName} ${lastName}`.trim()
+      const matchText = `${Math.round(similarity * 100)}%`
+      
+      // Draw name label (above) with larger font
+      ctx.font = 'bold 16px sans-serif'
+      const nameMetrics = ctx.measureText(nameText)
+      const nameWidth = nameMetrics.width + 12
+      const nameHeight = 24
+      
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.95)'
+      ctx.fillRect(x, y - nameHeight - 2, nameWidth, nameHeight)
+      ctx.fillStyle = '#000'
+      ctx.fillText(nameText, x + 6, y - 6)
+      
+      // Draw match label (below) with larger font
+      ctx.font = 'bold 14px sans-serif'
+      const matchMetrics = ctx.measureText(matchText)
+      const matchWidth = matchMetrics.width + 12
+      const matchHeight = 22
+      
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.95)'
+      ctx.fillRect(x, y + height + 2, matchWidth, matchHeight)
+      ctx.fillStyle = '#000'
+      ctx.fillText(matchText, x + 6, y + height + 18)
+    }
+  }
+
   const drawOverlay = (bbox, similarity, student) => {
     if (!overlayCanvasRef.current || !videoRef.current) {
       return
@@ -493,9 +521,9 @@ function Attendance() {
     const video = videoRef.current
     const ctx = overlay.getContext('2d')
     
-    // Use display dimensions (460x345 based on current video styling)
-    const displayWidth = 460
-    const displayHeight = 345
+    // Get actual display dimensions from video
+    const displayWidth = video.offsetWidth || video.videoWidth || 640
+    const displayHeight = video.offsetHeight || video.videoHeight || 480
     overlay.width = displayWidth
     overlay.height = displayHeight
     
@@ -515,9 +543,9 @@ function Attendance() {
     const width = bbox.width * scaleX
     const height = bbox.height * scaleY
     
-    // Draw bounding box
+    // Draw bounding box with thicker line
     ctx.strokeStyle = '#00ff00'
-    ctx.lineWidth = 2
+    ctx.lineWidth = 4
     ctx.strokeRect(x, y, width, height)
     
     // Prepare name text
@@ -526,27 +554,27 @@ function Attendance() {
     const nameText = `${firstName} ${lastName}`.trim()
     const matchText = `${Math.round(similarity * 100)}%`
     
-    // Draw name label (above)
-    ctx.font = 'bold 13px sans-serif'
+    // Draw name label (above) with larger font
+    ctx.font = 'bold 16px sans-serif'
     const nameMetrics = ctx.measureText(nameText)
-    const nameWidth = nameMetrics.width + 8
-    const nameHeight = 20
+    const nameWidth = nameMetrics.width + 12
+    const nameHeight = 24
     
-    ctx.fillStyle = 'rgba(0, 255, 0, 0.9)'
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.95)'
     ctx.fillRect(x, y - nameHeight - 2, nameWidth, nameHeight)
     ctx.fillStyle = '#000'
-    ctx.fillText(nameText, x + 4, y - 6)
+    ctx.fillText(nameText, x + 6, y - 6)
     
-    // Draw match label (below)
-    ctx.font = '11px sans-serif'
+    // Draw match label (below) with larger font
+    ctx.font = 'bold 14px sans-serif'
     const matchMetrics = ctx.measureText(matchText)
-    const matchWidth = matchMetrics.width + 8
-    const matchHeight = 18
+    const matchWidth = matchMetrics.width + 12
+    const matchHeight = 22
     
-    ctx.fillStyle = 'rgba(0, 255, 0, 0.9)'
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.95)'
     ctx.fillRect(x, y + height + 2, matchWidth, matchHeight)
     ctx.fillStyle = '#000'
-    ctx.fillText(matchText, x + 4, y + height + 14)
+    ctx.fillText(matchText, x + 6, y + height + 18)
   }
   
   const clearOverlay = () => {
@@ -559,15 +587,14 @@ function Attendance() {
 
   const resetScannerForNextStudent = () => {
     // Reset states without closing modal
-    setRecognizedCandidate(null)
     setScannerError('')
-    setIsScannerActive(false)
-    setIsFaceDetected(false)
-    setScannerMessage('Waiting for face detection...')
+    setScannerMessage('Scanning faces...')
     clearOverlay()
     
-    // Restart face detection loop
-    startFaceDetection()
+    // Resume scanning immediately
+    isScanningRef.current = true
+    setIsScannerActive(true)
+    startFrameLoop()
   }
 
   const handleScannerAccept = async () => {
@@ -611,6 +638,9 @@ function Attendance() {
     if (!recognizedCandidate) return
     const { student } = recognizedCandidate
     recordSkipForStudent(student.id)
+    
+    // Clear candidate first so scanning can resume
+    setRecognizedCandidate(null)
     
     // Immediately reset for next student without delay or message
     resetScannerForNextStudent()
@@ -803,6 +833,118 @@ function Attendance() {
     setStatusFilterMarking('all')
   }
 
+  const handleReopenSession = async (sessionId, e) => {
+    e.stopPropagation()
+    if (!confirm('Are you sure you want to reopen this session? This will allow attendance to be edited.')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/attendance/sessions/${sessionId}/reopen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      if (!response.ok) throw new Error('Failed to reopen session')
+
+      await fetchSessions()
+      alert('Session reopened successfully')
+    } catch (error) {
+      console.error('Error reopening session:', error)
+      alert('Failed to reopen session: ' + error.message)
+    }
+  }
+
+  const handleArchiveSession = async (sessionId, e) => {
+    e.stopPropagation()
+    if (!confirm('Are you sure you want to archive this session? This will lock it and prevent any further edits.')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/attendance/sessions/${sessionId}/archive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      if (!response.ok) throw new Error('Failed to archive session')
+
+      await fetchSessions()
+      alert('Session archived successfully')
+    } catch (error) {
+      console.error('Error archiving session:', error)
+      alert('Failed to archive session: ' + error.message)
+    }
+  }
+
+  const handleUnarchiveSession = async (sessionId, e) => {
+    e.stopPropagation()
+    if (!confirm('Are you sure you want to unarchive this session? This will allow attendance to be edited.')) {
+      return
+    }
+
+    try {
+      // Use reopen endpoint to unarchive (changes ARCHIVED -> ACTIVE)
+      const response = await fetch(`${API_BASE_URL}/api/attendance/sessions/${sessionId}/reopen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      if (!response.ok) throw new Error('Failed to unarchive session')
+
+      await fetchSessions()
+      alert('Session unarchived successfully')
+    } catch (error) {
+      console.error('Error unarchiving session:', error)
+      alert('Failed to unarchive session: ' + error.message)
+    }
+  }
+
+  const handleCancelSession = async (sessionId, e) => {
+    e.stopPropagation()
+    if (!confirm('Are you sure you want to cancel this session?')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/attendance/sessions/${sessionId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      if (!response.ok) throw new Error('Failed to cancel session')
+
+      await fetchSessions()
+      alert('Session cancelled successfully')
+    } catch (error) {
+      console.error('Error cancelling session:', error)
+      alert('Failed to cancel session: ' + error.message)
+    }
+  }
+
+  const handleReactivateSession = async (sessionId, e) => {
+    e.stopPropagation()
+    if (!confirm('Are you sure you want to reactivate this session? This will allow attendance to be marked.')) {
+      return
+    }
+
+    try {
+      // Use reopen endpoint to reactivate (changes CANCELLED -> ACTIVE)
+      const response = await fetch(`${API_BASE_URL}/api/attendance/sessions/${sessionId}/reopen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      if (!response.ok) throw new Error('Failed to reactivate session')
+
+      await fetchSessions()
+      alert('Session reactivated successfully')
+    } catch (error) {
+      console.error('Error reactivating session:', error)
+      alert('Failed to reactivate session: ' + error.message)
+    }
+  }
+
   const fetchStudentsAndRecords = async (sessionId, sectionId) => {
     try {
       // Fetch students enrolled in this section - using optimized endpoint
@@ -941,6 +1083,24 @@ function Attendance() {
         </button>
       </div>
 
+      {/* Tab Navigation */}
+      <div className="tabs-container">
+        <div className="tabs">
+          <button
+            className={`tab ${activeTab === 'active' ? 'active' : ''}`}
+            onClick={() => setActiveTab('active')}
+          >
+            Active Sessions
+          </button>
+          <button
+            className={`tab ${activeTab === 'archived' ? 'active' : ''}`}
+            onClick={() => setActiveTab('archived')}
+          >
+            Archived Sessions
+          </button>
+        </div>
+      </div>
+
       <div className="tab-content">
             {/* Search and Filter Component */}
             <div className="filters-section">
@@ -972,7 +1132,7 @@ function Attendance() {
                     className="filter-select"
                   >
                     <option value="all">All Sections</option>
-                    {sectionList.map(section => (
+                    {uniqueSections.map(section => (
                       <option key={section.id} value={section.id}>
                         {section.section_code}
                       </option>
@@ -1010,35 +1170,40 @@ function Attendance() {
                   </select>
                 </div>
 
-                <div className="filter-block">
-                  <label className="filter-label" htmlFor="status-filter">Status</label>
-                  <select
-                    id="status-filter"
-                    value={statusFilterSessions}
-                    onChange={(e) => setStatusFilterSessions(e.target.value)}
-                    className="filter-select"
-                  >
-                    <option value="all">All Status</option>
-                    <option value="SCHEDULED">Scheduled</option>
-                    <option value="IN_PROGRESS">In Progress</option>
-                    <option value="COMPLETED">Completed</option>
-                    <option value="CANCELLED">Cancelled</option>
-                  </select>
-                </div>
+                {activeTab === 'active' && (
+                  <div className="filter-block">
+                    <label className="filter-label" htmlFor="status-filter">Status</label>
+                    <select
+                      id="status-filter"
+                      value={statusFilterSessions}
+                      onChange={(e) => setStatusFilterSessions(e.target.value)}
+                      className="filter-select"
+                    >
+                      <option value="all">All Status</option>
+                      <option value="SCHEDULED">Scheduled</option>
+                      <option value="IN_PROGRESS">In Progress</option>
+                      <option value="COMPLETED">Completed</option>
+                      <option value="CANCELLED">Cancelled</option>
+                      <option value="ARCHIVED">Archived</option>
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="panel-header">
               <h3>Attendance Sessions</h3>
-              <button
-                onClick={() => {
-                  resetSessionForm()
-                  setShowSessionModal(true)
-                }}
-                className="btn btn-primary-small"
-              >
-                Create Session
-              </button>
+              {activeTab === 'active' && (
+                <button
+                  onClick={() => {
+                    resetSessionForm()
+                    setShowSessionModal(true)
+                  }}
+                  className="btn btn-primary-small"
+                >
+                  Create Session
+                </button>
+              )}
             </div>
 
             <div className="table-container">
@@ -1085,12 +1250,64 @@ function Attendance() {
                         </span>
                       </td>
                       <td>
-                        <button
-                          onClick={() => openMarkAttendance(session)}
-                          className="btn btn-small btn-action"
-                        >
-                          Mark Attendance
-                        </button>
+                        <div className="action-buttons">
+                          {session.status === 'ARCHIVED' ? (
+                            <button
+                              onClick={(e) => handleUnarchiveSession(session.id, e)}
+                              className="btn btn-small btn-action"
+                              title="Unarchive session to allow editing"
+                            >
+                              Unarchive
+                            </button>
+                          ) : (
+                            <>
+                              {session.status !== 'CANCELLED' && (
+                                <button
+                                  onClick={() => openMarkAttendance(session)}
+                                  className="btn btn-small btn-action"
+                                >
+                                  Mark Attendance
+                                </button>
+                              )}
+                              {['COMPLETED', 'CLOSED', 'ENDED'].includes(session.status) && (
+                                <button
+                                  onClick={(e) => handleArchiveSession(session.id, e)}
+                                  className="btn btn-small btn-action"
+                                  title="Archive session to lock it"
+                                >
+                                  Archive
+                                </button>
+                              )}
+                              {session.status === 'CANCELLED' && (
+                                <>
+                                  <button
+                                    onClick={(e) => handleReactivateSession(session.id, e)}
+                                    className="btn btn-small btn-action"
+                                    title="Reactivate session to allow attendance marking"
+                                  >
+                                    Reactivate
+                                  </button>
+                                  <button
+                                    onClick={(e) => handleArchiveSession(session.id, e)}
+                                    className="btn btn-small btn-action"
+                                    title="Archive session to lock it"
+                                  >
+                                    Archive
+                                  </button>
+                                </>
+                              )}
+                              {['SCHEDULED', 'IN_PROGRESS'].includes(session.status) && (
+                                <button
+                                  onClick={(e) => handleCancelSession(session.id, e)}
+                                  className="btn btn-small btn-action"
+                                  title="Cancel session"
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1291,109 +1508,172 @@ function Attendance() {
         </div>
       )}
 
+      {/* Camera Modal */}
       {showScannerModal && (
-        <div className="modal-overlay" onClick={closeScannerModal}>
-          <div
-            className="modal-content scanner-modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: 900,
-              minWidth: 350,
-              width: '90vw',
-              padding: 28,
-              borderRadius: 14,
-              background: '#ffffff',
-              boxShadow: '0 10px 40px rgba(0,0,0,0.22), 0 1px 3px rgba(0,0,0,0.25)',
-              display: 'flex',
-              flexDirection: window.innerWidth < 650 ? 'column' : 'row',
-              alignItems: 'stretch',
-              gap: 24,
-            }}
-          >
-            {/* Camera Section - minimal, black background, no heavy border */}
-            <div style={{
-              flex: '1 1 400px', maxWidth: 480, minWidth: 240,
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            }}>
-        <div style={{ background: '#111', borderRadius: 10, padding: 6, border: '1px solid #1f1f1f', position: 'relative' }}>
-          <video ref={videoRef} className="scanner-video" autoPlay playsInline muted style={{ width: 460, height: 345, background: '#000', borderRadius: 8, objectFit: 'cover', boxShadow: '0 2px 10px rgba(0,0,0,0.25)' }} />
-          <canvas ref={overlayCanvasRef} style={{ position: 'absolute', top: 6, left: 6, width: 460, height: 345, pointerEvents: 'none', borderRadius: 8 }} />
-          <canvas ref={canvasRef} style={{ display: 'none' }} />
-        </div>
-        {!isScannerActive && !recognizedCandidate && (
-          <button
-            style={{
-              marginTop: 14,
-              fontWeight: 700,
-              fontSize: '0.98em',
-              padding: '10px 28px',
-              background: isFaceDetected ? '#000' : '#ccc',
-              color: '#fff',
-              border: isFaceDetected ? '1px solid #000' : '1px solid #ccc',
-              borderRadius: 6,
-              letterSpacing: '0.02em',
-              cursor: isFaceDetected ? 'pointer' : 'not-allowed',
-              opacity: isFaceDetected ? 1 : 0.6,
-            }}
-            className="btn"
-            onClick={startCamera}
-            disabled={!isFaceDetected}
-          >
-            Start
-          </button>
-        )}
+        <div 
+          className="modal-overlay" 
+          onClick={closeScannerModal}
+        >
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '1200px', width: '95%', maxHeight: '90vh' }}>
+            <div className="modal-header">
+              <div>
+                <h2>Face Recognition</h2>
+                <p style={{ color: '#6b7280', margin: '0.5rem 0 0 0', fontSize: '0.875rem' }}>
+                  {scannerMessage}
+                </p>
+              </div>
+              <div className="modal-header-actions">
+                <button onClick={closeScannerModal} className="close-button">
+                  ✕
+                </button>
+              </div>
             </div>
 
-            {/* Subtle Divider */}
-            <div style={{
-              width: 1, background: '#e9e9e9', alignSelf: 'stretch', display: window.innerWidth < 650 ? 'none' : 'block'
-            }} />
-
-            {/* Details Section - black & white only */}
-            <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', minWidth: 240 }}>
-              {/* Status */}
-              <div className="scanner-status" style={{ marginBottom: recognizedCandidate ? 8 : 16, fontWeight: 500, minHeight: 28, color: '#111' }}>
-                <p style={{ margin: 0 }}>{scannerMessage}</p>
-                {scannerError && <p className="scanner-error" style={{ color: '#c00', margin: '6px 0 0 0' }}>{scannerError}</p>}
+            <div className="modal-body" style={{ padding: 0 }}>
+              {/* Camera View */}
+              <div style={{ 
+                position: 'relative',
+                width: '100%',
+                height: 'calc(90vh - 120px)',
+                minHeight: '500px',
+                background: '#000',
+                overflow: 'hidden'
+              }}>
+                <video ref={videoRef} 
+                  className="scanner-video" 
+                  autoPlay 
+                  playsInline 
+                  muted 
+                  style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    display: 'block',
+                    objectFit: 'contain'
+                  }} 
+                />
+                <canvas ref={overlayCanvasRef} style={{ 
+                  position: 'absolute', 
+                  top: 0, 
+                  left: 0, 
+                  width: '100%', 
+                  height: '100%', 
+                  pointerEvents: 'none'
+                }} />
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
               </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-              {/* Profile Card (compact) */}
-              {recognizedCandidate && (
-                <div style={{
-                  background: '#fff',
-                  border: '1px solid #ededed',
-                  borderRadius: 10,
-                  padding: '10px 12px',
-                  color: '#111',
-                  fontSize: '0.98em',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>ID:</span>
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{recognizedCandidate.student.displayId || recognizedCandidate.student.id}</span>
-                    <span style={{ marginLeft: 8, fontSize: 12, color: '#222', background: '#f4f4f4', padding: '2px 6px', borderRadius: 4 }}>
-                      {Math.round((recognizedCandidate.similarity || 0) * 100)}% match
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '1.08em', fontWeight: 700, marginBottom: 2 }}>{recognizedCandidate.student.firstName} {recognizedCandidate.student.lastName}</div>
-                  <div style={{ fontSize: 13, color: '#555', marginBottom: 2 }}>{recognizedCandidate.student.email}</div>
-                  <div style={{ fontSize: 13 }}>
-                    {recognizedCandidate.recommendedStatus && (
-                      <span><strong>Status:</strong> {recognizedCandidate.recommendedStatus} </span>
-                    )}
-                    {recognizedCandidate.recommendedCheckInTime && (
-                      <span style={{ marginLeft: 6 }}><strong>Check-in:</strong> {new Date(recognizedCandidate.recommendedCheckInTime).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-                    )}
-                  </div>
-                </div>
-              )}
+      {/* Confirmation Modal - pops up over camera */}
+      {recognizedCandidate && showScannerModal && (
+        <div 
+          className="modal-overlay"
+          style={{ 
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            zIndex: 9999,
+          }}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleScannerReject()
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#fff',
+              borderRadius: '14px',
+              padding: '24px',
+              maxWidth: '500px',
+              width: '90vw',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ marginTop: 0, marginBottom: '16px', fontSize: '20px', fontWeight: 600 }}>
+              Confirm Attendance
+            </h2>
 
-              {/* Action Buttons OUTSIDE the profile card */}
-              {recognizedCandidate && (
-                <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-                  <button onClick={handleScannerAccept} style={{ flex: 1, padding: '12px 0', fontWeight: 600, color: '#fff', background: '#000', border: '1px solid #000', borderRadius: 6 }}>Accept</button>
-                  <button onClick={handleScannerReject} style={{ flex: 1, padding: '12px 0', fontWeight: 600, color: '#000', background: '#fff', border: '1px solid #000', borderRadius: 6 }}>Reject</button>
-                </div>
-              )}
+            {/* Profile Card */}
+            <div style={{
+              background: '#fff',
+              border: '1px solid #ededed',
+              borderRadius: '10px',
+              padding: '16px',
+              color: '#111',
+              fontSize: '0.98em',
+              marginBottom: '20px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>ID:</span>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{recognizedCandidate.student.displayId || recognizedCandidate.student.id}</span>
+                <span style={{ marginLeft: 8, fontSize: 12, color: '#222', background: '#f4f4f4', padding: '2px 6px', borderRadius: 4 }}>
+                  {Math.round((recognizedCandidate.similarity || 0) * 100)}% match
+                </span>
+              </div>
+              <div style={{ fontSize: '1.2em', fontWeight: 700, marginBottom: 4 }}>
+                {recognizedCandidate.student.firstName} {recognizedCandidate.student.lastName}
+              </div>
+              <div style={{ fontSize: 14, color: '#555', marginBottom: 8 }}>
+                {recognizedCandidate.student.email}
+              </div>
+              <div style={{ fontSize: 13 }}>
+                {recognizedCandidate.recommendedStatus && (
+                  <div style={{ marginBottom: 4 }}>
+                    <strong>Status:</strong> {recognizedCandidate.recommendedStatus}
+                  </div>
+                )}
+                {recognizedCandidate.recommendedCheckInTime && (
+                  <div>
+                    <strong>Check-in:</strong> {new Date(recognizedCandidate.recommendedCheckInTime).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button 
+                onClick={handleScannerAccept} 
+                style={{ 
+                  flex: 1, 
+                  padding: '12px 0', 
+                  fontWeight: 600, 
+                  color: '#fff', 
+                  background: '#000', 
+                  border: '1px solid #000', 
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  fontSize: '15px'
+                }}
+              >
+                Accept
+              </button>
+              <button 
+                onClick={handleScannerReject} 
+                style={{ 
+                  flex: 1, 
+                  padding: '12px 0', 
+                  fontWeight: 600, 
+                  color: '#000', 
+                  background: '#fff', 
+                  border: '1px solid #000', 
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  fontSize: '15px'
+                }}
+              >
+                Reject
+              </button>
             </div>
           </div>
         </div>

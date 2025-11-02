@@ -85,8 +85,12 @@ public class AttendanceSession {
         // Validate against known statuses
         if (!upperStatus.equals(AttendanceConstants.SESSION_STATUS_SCHEDULED) &&
             !upperStatus.equals(AttendanceConstants.SESSION_STATUS_ACTIVE) &&
-            !upperStatus.equals(AttendanceConstants.SESSION_STATUS_ENDED)) {
-            throw new IllegalArgumentException("Invalid status: " + status + ". Must be SCHEDULED, ACTIVE, or ENDED");
+            !upperStatus.equals(AttendanceConstants.SESSION_STATUS_ENDED) &&
+            !upperStatus.equals(AttendanceConstants.SESSION_STATUS_CLOSED) &&
+            !upperStatus.equals(AttendanceConstants.SESSION_STATUS_COMPLETED) &&
+            !upperStatus.equals(AttendanceConstants.SESSION_STATUS_ARCHIVED) &&
+            !upperStatus.equals(AttendanceConstants.SESSION_STATUS_CANCELLED)) {
+            throw new IllegalArgumentException("Invalid status: " + status + ". Must be SCHEDULED, ACTIVE, ENDED, CLOSED, COMPLETED, ARCHIVED, or CANCELLED");
         }
         this.status = upperStatus;
     }
@@ -109,7 +113,10 @@ public class AttendanceSession {
      */
     public boolean hasEnded() {
         return AttendanceConstants.SESSION_STATUS_ENDED.equalsIgnoreCase(status) 
-            || AttendanceConstants.SESSION_STATUS_CLOSED.equalsIgnoreCase(status);
+            || AttendanceConstants.SESSION_STATUS_CLOSED.equalsIgnoreCase(status)
+            || AttendanceConstants.SESSION_STATUS_COMPLETED.equalsIgnoreCase(status)
+            || AttendanceConstants.SESSION_STATUS_ARCHIVED.equalsIgnoreCase(status)
+            || AttendanceConstants.SESSION_STATUS_CANCELLED.equalsIgnoreCase(status);
     }
     
     /**
@@ -176,6 +183,36 @@ public class AttendanceSession {
     }
     
     /**
+     * Reopen a completed/closed session to allow editing attendance.
+     */
+    public void reopen() {
+        if (!hasEnded()) {
+            throw new IllegalStateException("Cannot reopen a session that has not ended");
+        }
+        this.status = AttendanceConstants.SESSION_STATUS_ACTIVE;
+    }
+    
+    /**
+     * Archive a session to prevent further modifications.
+     */
+    public void archive() {
+        if (!hasEnded()) {
+            throw new IllegalStateException("Cannot archive a session that has not ended");
+        }
+        this.status = AttendanceConstants.SESSION_STATUS_ARCHIVED;
+    }
+    
+    /**
+     * Cancel a session that hasn't started yet.
+     */
+    public void cancel() {
+        if (hasEnded() || isActive()) {
+            throw new IllegalStateException("Cannot cancel a session that has already started or ended");
+        }
+        this.status = AttendanceConstants.SESSION_STATUS_CANCELLED;
+    }
+    
+    /**
      * Check if this session is for today.
      * @return true if the session date is today
      */
@@ -197,6 +234,79 @@ public class AttendanceSession {
      */
     public boolean isFuture() {
         return sessionDate != null && sessionDate.isAfter(LocalDate.now());
+    }
+    
+    /**
+     * Automatically determine the session status based on current date and time.
+     * This method should be called when retrieving sessions to ensure correct status display.
+     * 
+     * Status logic:
+     * - If manually ended (ARCHIVED, ENDED, COMPLETED, CANCELLED): Keep as is
+     * - If session date is in the future: SCHEDULED
+     * - If session date is today and within time window: ACTIVE
+     * - If session date is today but after time window: COMPLETED
+     * - If session date is in the past: COMPLETED
+     * 
+     * @return the appropriate status based on current state
+     */
+    public String getAutomaticStatus() {
+        // If already manually ended, keep that status
+        if (hasEnded()) {
+            return this.status;
+        }
+        
+        // If cancelled, keep cancelled
+        if (AttendanceConstants.SESSION_STATUS_CANCELLED.equalsIgnoreCase(this.status)) {
+            return this.status;
+        }
+        
+        LocalDate now = LocalDate.now();
+        LocalDateTime nowDateTime = LocalDateTime.now();
+        
+        // Future session
+        if (sessionDate != null && sessionDate.isAfter(now)) {
+            return AttendanceConstants.SESSION_STATUS_SCHEDULED;
+        }
+        
+        // Past session
+        if (sessionDate != null && sessionDate.isBefore(now)) {
+            return AttendanceConstants.SESSION_STATUS_COMPLETED;
+        }
+        
+        // Today's session - check time window
+        if (sessionDate != null && sessionDate.equals(now)) {
+            if (scheduledStartTime != null && scheduledEndTime != null) {
+                LocalTime currentTime = nowDateTime.toLocalTime();
+                
+                // Before start time
+                if (currentTime.isBefore(scheduledStartTime)) {
+                    return AttendanceConstants.SESSION_STATUS_SCHEDULED;
+                }
+                
+                // After end time
+                if (currentTime.isAfter(scheduledEndTime)) {
+                    return AttendanceConstants.SESSION_STATUS_COMPLETED;
+                }
+                
+                // Within time window - ACTIVE
+                return AttendanceConstants.SESSION_STATUS_ACTIVE;
+            }
+            
+            // No time specified but date is today - consider it ACTIVE
+            return AttendanceConstants.SESSION_STATUS_ACTIVE;
+        }
+        
+        // Default fallback
+        return this.status != null ? this.status : AttendanceConstants.SESSION_STATUS_SCHEDULED;
+    }
+    
+    /**
+     * Update session status to match automatic status.
+     * This is useful when you want to persist the computed status.
+     */
+    public void updateToAutomaticStatus() {
+        String computedStatus = getAutomaticStatus();
+        this.status = computedStatus;
     }
 }
 

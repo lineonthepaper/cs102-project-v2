@@ -223,6 +223,39 @@ public class FaceRecognitionService {
         }
     }
 
+    /**
+     * Compute embeddings for all detected faces in an image.
+     * Returns list of embeddings with their corresponding bounding boxes.
+     */
+    public List<EmbeddingWithBbox> computeAllEmbeddingsWithBbox(byte[] imageBytes) {
+        ensureModelsLoaded();
+
+        List<EmbeddingWithBbox> results = new java.util.ArrayList<>();
+        
+        List<com.smartattendance.util.opencv.FaceDetectionResult> detections = 
+            com.smartattendance.util.opencv.FaceDetectionUtils.getAllFacesWithBbox(imageBytes, faceDetector);
+        
+        if (detections == null || detections.isEmpty()) {
+            System.out.println("[MULTI-EMBEDDING] No faces detected - cannot compute embeddings");
+            return results;
+        }
+
+        System.out.println("[MULTI-EMBEDDING] Computing embeddings for " + detections.size() + " detected face(s)...");
+        
+        for (com.smartattendance.util.opencv.FaceDetectionResult detection : detections) {
+            try {
+                float[] embedding = FaceEmbeddingUtils.faceToEmbedding(detection.getFaceMat(), recognitionNet);
+                results.add(new EmbeddingWithBbox(embedding, detection.getBoundingBox(), 
+                                                 detection.getOriginalWidth(), detection.getOriginalHeight()));
+            } finally {
+                detection.getFaceMat().release();
+            }
+        }
+        
+        System.out.println("[MULTI-EMBEDDING] Successfully computed " + results.size() + " embeddings");
+        return results;
+    }
+
     public static class EmbeddingWithBbox {
         private final float[] embedding;
         private final org.opencv.core.Rect boundingBox;

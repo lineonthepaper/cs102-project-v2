@@ -15,7 +15,10 @@ public final class AttendanceConstants {
     public static final String SESSION_STATUS_ACTIVE = "ACTIVE";
     public static final String SESSION_STATUS_ENDED = "ENDED";
     public static final String SESSION_STATUS_CLOSED = "CLOSED";
+    public static final String SESSION_STATUS_COMPLETED = "COMPLETED";
     public static final String SESSION_STATUS_SCHEDULED = "SCHEDULED";
+    public static final String SESSION_STATUS_ARCHIVED = "ARCHIVED";
+    public static final String SESSION_STATUS_CANCELLED = "CANCELLED";
     
     // ===== Timing Constants =====
     /**

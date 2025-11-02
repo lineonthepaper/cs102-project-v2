@@ -68,7 +68,7 @@ function Students() {
     const studentExists = filteredStudents.some(
       (student) => student.id === selectedStudent.id
     )
-    
+
     if (!studentExists) {
       setSelectedStudent(null)
       setShowModal(false)
@@ -898,7 +898,7 @@ function Students() {
                   <td className="student-id">{student.displayId || student.id}</td>
                   <td className="student-name">
                     <div>
-                      {student.first_name} {student.last_name}
+                    {student.first_name} {student.last_name}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.15rem' }}>
                       {student.email}
@@ -928,18 +928,18 @@ function Students() {
                   </td>
                   <td>
                     <div className="action-buttons">
-                      <button
-                        onClick={() => handleStudentClick(student)}
-                        className="btn btn-small btn-action"
-                      >
+                    <button
+                      onClick={() => handleStudentClick(student)}
+                      className="btn btn-small btn-action"
+                    >
                         View
-                      </button>
-                      <button
-                        onClick={() => openManageEnrollmentModal(student)}
-                        className="btn btn-small btn-action"
-                      >
+                    </button>
+                    <button
+                      onClick={() => openManageEnrollmentModal(student)}
+                      className="btn btn-small btn-action"
+                    >
                         Sections
-                      </button>
+                    </button>
                       <button
                         onClick={() => handleEditStudent(student)}
                         className="btn btn-small btn-action"
@@ -975,28 +975,28 @@ function Students() {
               <div className="loading">Loading student details...</div>
             ) : selectedStudent ? (
               <>
-                <div className="modal-header">
-                  <h2>Student Overview</h2>
-                  <button onClick={closeModal} className="close-button">
-                    ✕
-                  </button>
-                </div>
+            <div className="modal-header">
+              <h2>Student Overview</h2>
+              <button onClick={closeModal} className="close-button">
+                ✕
+              </button>
+            </div>
 
-                <div className="student-info">
-                  <div className="student-header">
-                    <div className="student-details">
-                      <div className="student-name-row">
-                        <h3>{selectedStudent.first_name} {selectedStudent.last_name}</h3>
-                        <span className="student-id-badge">
-                          {selectedStudent.displayId || selectedStudent.id}
-                        </span>
-                      </div>
-                      <p className="student-email">{selectedStudent.email}</p>
-                    </div>
+            <div className="student-info">
+              <div className="student-header">
+                <div className="student-details">
+                  <div className="student-name-row">
+                    <h3>{selectedStudent.first_name} {selectedStudent.last_name}</h3>
+                    <span className="student-id-badge">
+                      {selectedStudent.displayId || selectedStudent.id}
+                    </span>
                   </div>
+                  <p className="student-email">{selectedStudent.email}</p>
                 </div>
+              </div>
+            </div>
 
-                <div className="modal-body student-details-body">
+            <div className="modal-body student-details-body">
               <div className="details-overview">
                 <div className="details-overview-header">
                   <h3>Attendance Summary</h3>

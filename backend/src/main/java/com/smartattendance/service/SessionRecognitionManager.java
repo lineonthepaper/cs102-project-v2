@@ -8,7 +8,6 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -20,6 +19,7 @@ import com.smartattendance.entity.ComparisonResult;
 
 import com.smartattendance.dto.response.attendance.BoundingBoxDTO;
 import com.smartattendance.dto.response.attendance.FaceScanResponseDTO;
+import com.smartattendance.dto.response.attendance.FaceDetectionDTO;
 import com.smartattendance.dto.response.attendance.RecognizedStudentDTO;
 import com.smartattendance.entity.AttendanceRecord;
 import com.smartattendance.entity.AttendanceSession;
@@ -245,47 +245,54 @@ public class SessionRecognitionManager {
             System.out.println("[VOTING] Frame " + (scans + 1) + "/" + windowSize);
             System.out.println("[VOTING] Candidates: " + embeddingIndex.size() + " students");
             
-            // Get top candidate with bounding box for this frame
-            Optional<FaceRecognitionService.EmbeddingWithBbox> embeddingWithBbox = 
-                recognitionService.computeEmbeddingWithBbox(imageBytes);
+            // Get all detected faces with embeddings
+            List<FaceRecognitionService.EmbeddingWithBbox> allEmbeddings = 
+                recognitionService.computeAllEmbeddingsWithBbox(imageBytes);
             
-            if (embeddingWithBbox.isPresent()) {
-                FaceRecognitionService.EmbeddingWithBbox emb = embeddingWithBbox.get();
+            // Track which candidates were detected in THIS frame
+            Set<String> candidatesInThisFrame = new java.util.HashSet<>();
+            
+            if (!allEmbeddings.isEmpty()) {
+                System.out.println("[VOTING] Detected " + allEmbeddings.size() + " face(s) in this frame");
                 
-                // Get best match from computed embedding
-                ComparisonResult result = com.smartattendance.util.opencv.FaceRecognitionUtils
-                    .findTopCandidate(emb.getEmbedding(), embeddingIndex);
+                // Process each detected face
+                for (FaceRecognitionService.EmbeddingWithBbox emb : allEmbeddings) {
+                    // Get best match from computed embedding
+                    ComparisonResult result = com.smartattendance.util.opencv.FaceRecognitionUtils
+                        .findTopCandidate(emb.getEmbedding(), embeddingIndex);
                 
-                if (result != null && result.getFaceName() != null) {
-                String candidateId = result.getFaceName();
-                float topSim = result.getSimilarity();
-                
-                // Store bounding box for this candidate
-                boundingBoxByCandidate.put(candidateId, emb.getBoundingBox());
-                originalWidthByCandidate.put(candidateId, emb.getOriginalWidth());
-                originalHeightByCandidate.put(candidateId, emb.getOriginalHeight());
-                
-                StudentProfile profile = profiles.get(candidateId);
-                String candidateName = profile != null ? profile.getEmail() : candidateId;
-                
-                System.out.println("[VOTING] Top match: " + candidateName + " with " + 
-                                 String.format("%.2f%%", topSim * 100) + " similarity");
-                
-                // Only count as vote if above minimum threshold
-                if (topSim >= (float) this.minSimilarity) {
-                    voteCounts.merge(candidateId, 1, Integer::sum);
-                    maxSimilarityById.merge(candidateId, topSim, (a, b) -> a != null && a > b ? a : b);
-                    System.out.println("[VOTING] Vote counted! Total votes for " + candidateName + ": " + 
-                                     voteCounts.get(candidateId));
-                } else {
-                    System.out.println("[VOTING] Vote NOT counted (below " + 
-                                     String.format("%.2f%%", this.minSimilarity * 100) + " threshold)");
+                    if (result != null && result.getFaceName() != null) {
+                        String candidateId = result.getFaceName();
+                        float topSim = result.getSimilarity();
+                        
+                        StudentProfile profile = profiles.get(candidateId);
+                        String candidateName = profile != null ? profile.getEmail() : candidateId;
+                        
+                        System.out.println("[VOTING] Top match: " + candidateName + " with " + 
+                                         String.format("%.2f%%", topSim * 100) + " similarity");
+                        
+                        // Only count as vote if above minimum threshold
+                        if (topSim >= (float) this.minSimilarity) {
+                            voteCounts.merge(candidateId, 1, Integer::sum);
+                            maxSimilarityById.merge(candidateId, topSim, (a, b) -> a != null && a > b ? a : b);
+                            
+                            // Store bounding box only for votes that count
+                            boundingBoxByCandidate.put(candidateId, emb.getBoundingBox());
+                            originalWidthByCandidate.put(candidateId, emb.getOriginalWidth());
+                            originalHeightByCandidate.put(candidateId, emb.getOriginalHeight());
+                            
+                            // Track that this candidate was detected in this frame
+                            candidatesInThisFrame.add(candidateId);
+                            
+                            System.out.println("[VOTING] Vote counted! Total votes for " + candidateName + ": " + 
+                                             voteCounts.get(candidateId));
+                        } else {
+                            System.out.println("[VOTING] Vote NOT counted (below " + 
+                                             String.format("%.2f%%", this.minSimilarity * 100) + " threshold)");
+                        }
+                    }
                 }
                 scans++;
-                } else {
-                    System.out.println("[VOTING] No face detected in this frame");
-                    scans++;
-                }
             } else {
                 System.out.println("[VOTING] No face detected in this frame");
                 scans++;
@@ -393,31 +400,23 @@ public class SessionRecognitionManager {
             System.out.println("[VOTING] Continue scanning... (" + scans + "/" + windowSize + " frames)");
             System.out.println("[VOTING] ============================================\n");
             
-            // Return current top candidate for real-time overlay display
-            if (!voteCounts.isEmpty()) {
-                Map.Entry<String, Integer> currentLeader = voteCounts.entrySet().stream()
-                        .max((a, b) -> {
-                            int cmp = Integer.compare(a.getValue(), b.getValue());
-                            if (cmp != 0) return cmp;
-                            float sa = maxSimilarityById.getOrDefault(a.getKey(), 0.0f);
-                            float sb = maxSimilarityById.getOrDefault(b.getKey(), 0.0f);
-                            return Float.compare(sa, sb);
-                        })
-                        .orElse(null);
-                
-                if (currentLeader != null) {
-                    String leaderId = currentLeader.getKey();
-                    StudentProfile leaderProfile = profiles.get(leaderId);
-                    if (leaderProfile != null) {
-                        double leaderSimilarity = (double) maxSimilarityById.getOrDefault(leaderId, 0.0f);
-                        org.opencv.core.Rect leaderBbox = boundingBoxByCandidate.get(leaderId);
-                        int leaderWidth = originalWidthByCandidate.getOrDefault(leaderId, 0);
-                        int leaderHeight = originalHeightByCandidate.getOrDefault(leaderId, 0);
-                        
-                        return FaceScanResponseDTOBuilder.scanningWithCandidate(
-                            leaderProfile, leaderSimilarity, leaderBbox, leaderWidth, leaderHeight);
-                    }
-                }
+            // Clear bounding boxes for candidates not detected in the current frame
+            if (!candidatesInThisFrame.isEmpty()) {
+                boundingBoxByCandidate.keySet().retainAll(candidatesInThisFrame);
+                originalWidthByCandidate.keySet().retainAll(candidatesInThisFrame);
+                originalHeightByCandidate.keySet().retainAll(candidatesInThisFrame);
+            } else {
+                // No faces detected in this frame - clear all boxes
+                boundingBoxByCandidate.clear();
+                originalWidthByCandidate.clear();
+                originalHeightByCandidate.clear();
+            }
+            
+            // Return all detected candidates for real-time overlay display
+            if (!voteCounts.isEmpty() && !maxSimilarityById.isEmpty()) {
+                return FaceScanResponseDTOBuilder.scanningWithAllDetections(
+                    profiles, maxSimilarityById, boundingBoxByCandidate, 
+                    originalWidthByCandidate, originalHeightByCandidate);
             }
             
             return FaceScanResponseDTOBuilder.noMatch("Scanning...");
@@ -524,6 +523,60 @@ public class SessionRecognitionManager {
             dto.setMessage(message);
             dto.setAlreadyMarked(false);
             dto.setSimilarity(0.0);
+            return dto;
+        }
+
+        static FaceScanResponseDTO scanningWithAllDetections(Map<String, StudentProfile> profiles,
+                                                              Map<String, Float> maxSimilarityById,
+                                                              Map<String, org.opencv.core.Rect> boundingBoxByCandidate,
+                                                              Map<String, Integer> originalWidthByCandidate,
+                                                              Map<String, Integer> originalHeightByCandidate) {
+            List<FaceDetectionDTO> detections = new ArrayList<>();
+            
+            // Create detection entry for each candidate that has votes
+            for (Map.Entry<String, Float> entry : maxSimilarityById.entrySet()) {
+                String candidateId = entry.getKey();
+                double similarity = entry.getValue();
+                
+                org.opencv.core.Rect bbox = boundingBoxByCandidate.get(candidateId);
+                if (bbox == null) continue;
+                
+                int width = originalWidthByCandidate.getOrDefault(candidateId, 0);
+                int height = originalHeightByCandidate.getOrDefault(candidateId, 0);
+                
+                BoundingBoxDTO bboxDTO = new BoundingBoxDTO(
+                    bbox.x, bbox.y, bbox.width, bbox.height, width, height
+                );
+                
+                StudentProfile profile = profiles.get(candidateId);
+                if (profile == null) continue;
+                
+                RecognizedStudentDTO studentDTO = new RecognizedStudentDTO();
+                studentDTO.setId(profile.getUserId());
+                studentDTO.setDisplayId(profile.getDisplayId());
+                studentDTO.setFirstName(profile.getFirstName());
+                studentDTO.setLastName(profile.getLastName());
+                studentDTO.setEmail(profile.getEmail());
+                
+                detections.add(new FaceDetectionDTO(bboxDTO, studentDTO, similarity));
+            }
+            
+            FaceScanResponseDTO dto = new FaceScanResponseDTO();
+            dto.setMatched(false);
+            dto.setAlreadyMarked(false);
+            dto.setMessage("Scanning...");
+            dto.setAllDetections(detections);
+            
+            // Still set primary bounding box and student (the leader) for backwards compatibility
+            if (!detections.isEmpty()) {
+                FaceDetectionDTO leader = detections.stream()
+                    .max((a, b) -> Double.compare(a.getSimilarity(), b.getSimilarity()))
+                    .orElse(detections.get(0));
+                dto.setBoundingBox(leader.getBoundingBox());
+                dto.setStudent(leader.getStudent());
+                dto.setSimilarity(leader.getSimilarity());
+            }
+            
             return dto;
         }
 
