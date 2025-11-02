@@ -1,18 +1,13 @@
 package com.smartattendance.dto.response;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+
+@Data
+@AllArgsConstructor
 public class FaceDetectionResponseDTO {
+
     private boolean faceDetected;
-
-    public FaceDetectionResponseDTO(boolean faceDetected) {
-        this.faceDetected = faceDetected;
-    }
-
-    public boolean isFaceDetected() {
-        return faceDetected;
-    }
-
-    public void setFaceDetected(boolean faceDetected) {
-        this.faceDetected = faceDetected;
-    }
+    
 }
 

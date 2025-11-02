@@ -1,5 +1,6 @@
 package com.smartattendance.util.opencv;
 
+import lombok.Getter;
 import nu.pattern.OpenCV;
 
 /**
@@ -7,6 +8,7 @@ import nu.pattern.OpenCV;
  * Automatically handles native libraries for Windows, macOS (Intel & Apple Silicon), and Linux.
  */
 public class OpenCVLoader {
+    @Getter
     private static boolean loaded = false;
 
     static {
@@ -30,7 +32,4 @@ public class OpenCVLoader {
         // supposed to be empty
     }
     
-    public static boolean isLoaded() {
-        return loaded;
-    }
 }

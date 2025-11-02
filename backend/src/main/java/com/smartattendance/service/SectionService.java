@@ -10,6 +10,9 @@ import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
 import com.smartattendance.util.helper.DateTimeUtils;
+
+import lombok.AllArgsConstructor;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -24,6 +27,7 @@ import java.util.stream.Collectors;
  * Handles business logic and comprehensive dependency validation.
  */
 @Service
+@AllArgsConstructor
 public class SectionService {
 
     private static final Logger logger = LoggerFactory.getLogger(SectionService.class);
@@ -32,17 +36,6 @@ public class SectionService {
     private final SectionEnrollmentRepository enrollmentRepository;
     private final UserRepository userRepository;
     private final EntityMapper mapper;
-
-    public SectionService(
-            SectionRepository sectionRepository,
-            SectionEnrollmentRepository enrollmentRepository,
-            UserRepository userRepository,
-            EntityMapper mapper) {
-        this.sectionRepository = sectionRepository;
-        this.enrollmentRepository = enrollmentRepository;
-        this.userRepository = userRepository;
-        this.mapper = mapper;
-    }
 
     @Transactional(readOnly = true)
     public List<SectionDTO> getAllSections() {

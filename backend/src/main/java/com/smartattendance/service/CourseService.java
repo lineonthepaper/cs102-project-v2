@@ -5,6 +5,9 @@ import com.smartattendance.entity.Course;
 import com.smartattendance.exception.ResourceNotFoundException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.CourseRepository;
+
+import lombok.AllArgsConstructor;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -17,17 +20,13 @@ import java.util.List;
  * Handles business logic and dependency validation.
  */
 @Service
+@AllArgsConstructor
 public class CourseService {
 
     private static final Logger logger = LoggerFactory.getLogger(CourseService.class);
     
     private final CourseRepository courseRepository;
     private final EntityMapper mapper;
-
-    public CourseService(CourseRepository courseRepository, EntityMapper mapper) {
-        this.courseRepository = courseRepository;
-        this.mapper = mapper;
-    }
 
     @Transactional(readOnly = true)
     public List<CourseDTO> getAllCourses() {

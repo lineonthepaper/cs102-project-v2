@@ -10,6 +10,9 @@ import com.smartattendance.repository.*;
 import com.smartattendance.service.strategy.AttendanceStrategyFactory;
 import com.smartattendance.service.strategy.AttendanceMarkingStrategy;
 import com.smartattendance.util.helper.DateTimeUtils;
+
+import lombok.AllArgsConstructor;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +24,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
+@AllArgsConstructor
 public class AttendanceService {
 
     private final AttendanceSessionRepository sessionRepository;
@@ -29,21 +33,6 @@ public class AttendanceService {
     private final SectionEnrollmentRepository enrollmentRepository;
     private final AttendanceStrategyFactory strategyFactory;
     private final SessionRecognitionManager recognitionManager;
-
-    public AttendanceService(
-            AttendanceSessionRepository sessionRepository,
-            AttendanceRecordRepository recordRepository,
-            SectionRepository sectionRepository,
-            SectionEnrollmentRepository enrollmentRepository,
-            AttendanceStrategyFactory strategyFactory,
-            SessionRecognitionManager recognitionManager) {
-        this.sessionRepository = sessionRepository;
-        this.recordRepository = recordRepository;
-        this.sectionRepository = sectionRepository;
-        this.enrollmentRepository = enrollmentRepository;
-        this.strategyFactory = strategyFactory;
-        this.recognitionManager = recognitionManager;
-    }
 
     @Transactional(readOnly = true)
     public List<AttendanceSessionResponseDTO> getAllSessions() {

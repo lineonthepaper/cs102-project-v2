@@ -33,8 +33,8 @@ public class InstructorService {
     private final SectionAssignmentRepository sectionAssignmentRepository;
     private final EntityMapper mapper;
 
-    public InstructorService(UserRepository userRepository, SectionAssignmentRepository sectionAssignmentRepository,
-                            EntityMapper mapper) {
+    public InstructorService(UserRepository userRepository, SectionAssignmentRepository sectionAssignmentRepository, EntityMapper mapper) 
+    {
         this.userRepository = userRepository;
         this.sectionAssignmentRepository = sectionAssignmentRepository;
         this.mapper = mapper;
