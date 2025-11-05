@@ -365,7 +365,8 @@ function TeachingAssistants() {
   }
 
   const removeTA = async (user) => {
-    if (!confirm(`Are you sure you want to remove ${user.first_name} ${user.last_name} as a Teaching Assistant? They will remain as a student in the system.`)) {
+    const userTypeText = user.is_instructor ? 'an instructor' : 'a student'
+    if (!confirm(`Are you sure you want to remove ${user.first_name} ${user.last_name} as a Teaching Assistant? They will remain as ${userTypeText} in the system.`)) {
       return
     }
 
@@ -419,7 +420,8 @@ function TeachingAssistants() {
       await fetchUsers()
       await fetchTaAssignments()
 
-      alert(`${user.first_name} ${user.last_name} has been removed as a Teaching Assistant. Their account has been disabled from login but remains as a student in the system.`)
+      const userTypeText = user.is_instructor ? 'an instructor' : 'a student'
+      alert(`${user.first_name} ${user.last_name} has been removed as a Teaching Assistant. Their account has been disabled from login but remains as ${userTypeText} in the system.`)
 
     } catch (error) {
       console.error('Error removing TA:', error)

@@ -614,6 +614,20 @@ body {
   overflow: hidden;
 }
 
+/* Make table container scrollable in modals */
+.modal-body .table-container {
+  max-height: calc(90vh - 400px);
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+/* Make table header sticky when scrolling in modal */
+.modal-body .table-container .data-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
 .table-header-actions {
   display: flex;
   justify-content: flex-end;

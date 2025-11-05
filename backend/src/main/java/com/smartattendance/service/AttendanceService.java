@@ -10,6 +10,7 @@ import com.smartattendance.repository.*;
 import com.smartattendance.service.strategy.AttendanceStrategyFactory;
 import com.smartattendance.service.strategy.AttendanceMarkingStrategy;
 import com.smartattendance.util.helper.DateTimeUtils;
+import com.smartattendance.util.constants.AttendanceConstants;
 
 import lombok.AllArgsConstructor;
 
@@ -53,13 +54,15 @@ public class AttendanceService {
             session.setSessionDate(LocalDate.parse(request.getSessionDate()));
             session.setScheduledStartTime(LocalTime.parse(request.getScheduledStartTime()));
             session.setScheduledEndTime(LocalTime.parse(request.getScheduledEndTime()));
-            session.setStatus(request.getStatus());
+            // Automatically determine status based on date/time - ignore status from request
+            String autoStatus = session.getAutomaticStatus();
+            session.setStatus(autoStatus);
             session.setNotes(request.getNotes());
     
             AttendanceSession savedSession = sessionRepository.save(session);
             
             // Auto-mark absent if session is created with ended status
-            if (isEndedStatus(request.getStatus())) {
+            if (isEndedStatus(autoStatus)) {
                 autoMarkAbsentForUnmarkedStudents(savedSession.getId(), request.getSectionId());
             }
             
@@ -110,8 +113,13 @@ public class AttendanceService {
             AttendanceSession session = sessionRepository.findById(id)
                     .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
             
+            String oldStatus = session.getStatus();
             session.cancel();
-            AttendanceSession cancelledSession = sessionRepository.save(session);
+            AttendanceSession cancelledSession = sessionRepository.saveAndFlush(session);
+            
+            // Verify the status was actually set
+            System.out.println("[CANCEL] Session " + id + " status changed from " + oldStatus + " to " + cancelledSession.getStatus());
+            
             return mapToSessionDTO(cancelledSession);
         } catch (IllegalStateException e) {
             throw new InvalidRequestException(e.getMessage());
@@ -128,18 +136,24 @@ public class AttendanceService {
                     .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
     
             String oldStatus = session.getStatus();
-            String newStatus = request.getStatus();
             
             session.setSectionId(request.getSectionId());
             session.setSessionDate(LocalDate.parse(request.getSessionDate()));
             session.setScheduledStartTime(LocalTime.parse(request.getScheduledStartTime()));
             session.setScheduledEndTime(LocalTime.parse(request.getScheduledEndTime()));
-            session.setStatus(request.getStatus());
+            // Automatically determine status based on date/time, but preserve manually set statuses
+            // Only update status if it's not a manually set status (CANCELLED, ARCHIVED, etc.)
+            if (!session.hasEnded() && !AttendanceConstants.SESSION_STATUS_CANCELLED.equalsIgnoreCase(oldStatus)) {
+                String autoStatus = session.getAutomaticStatus();
+                session.setStatus(autoStatus);
+            }
+            // If status is manually set (CANCELLED, ARCHIVED, etc.), keep it
             session.setNotes(request.getNotes());
     
             AttendanceSession updatedSession = sessionRepository.save(session);
             
             // Auto-mark absent if session is being closed/ended
+            String newStatus = updatedSession.getStatus();
             if (!isEndedStatus(oldStatus) && isEndedStatus(newStatus)) {
                 autoMarkAbsentForUnmarkedStudents(id, request.getSectionId());
             }
@@ -271,8 +285,21 @@ public class AttendanceService {
         dto.setSessionDate(session.getSessionDate().toString());
         dto.setScheduledStartTime(session.getScheduledStartTime().toString());
         dto.setScheduledEndTime(session.getScheduledEndTime().toString());
-        // Use automatic status based on current date/time
-        dto.setStatus(session.getAutomaticStatus());
+        // Use actual status from database - preserve manually set statuses (CANCELLED, ARCHIVED, etc.)
+        // Only use automatic status if status is null or if it's a non-manual status that should be auto-calculated
+        String actualStatus = session.getStatus();
+        if (actualStatus == null || actualStatus.isBlank()) {
+            dto.setStatus(session.getAutomaticStatus());
+        } else if (AttendanceConstants.SESSION_STATUS_CANCELLED.equalsIgnoreCase(actualStatus)) {
+            // Always preserve CANCELLED status - it's manually set
+            dto.setStatus(actualStatus);
+        } else if (session.hasEnded()) {
+            // Preserve other manually set statuses (ARCHIVED, ENDED, CLOSED, COMPLETED)
+            dto.setStatus(actualStatus);
+        } else {
+            // For non-manual statuses (SCHEDULED, ACTIVE), use automatic calculation
+            dto.setStatus(session.getAutomaticStatus());
+        }
         dto.setNotes(session.getNotes());
 
         // Fetch section info

@@ -184,12 +184,20 @@ public class AttendanceSession {
     
     /**
      * Reopen a completed/closed session to allow editing attendance.
+     * If the session was CANCELLED, it will be set back to SCHEDULED.
+     * If the session was ENDED/CLOSED/COMPLETED, it will be set to ACTIVE.
      */
     public void reopen() {
         if (!hasEnded()) {
             throw new IllegalStateException("Cannot reopen a session that has not ended");
         }
-        this.status = AttendanceConstants.SESSION_STATUS_ACTIVE;
+        // If cancelled, reactivate to SCHEDULED (not started yet)
+        if (AttendanceConstants.SESSION_STATUS_CANCELLED.equalsIgnoreCase(status)) {
+            this.status = AttendanceConstants.SESSION_STATUS_SCHEDULED;
+        } else {
+            // For ENDED/CLOSED/COMPLETED sessions, set to ACTIVE to allow editing
+            this.status = AttendanceConstants.SESSION_STATUS_ACTIVE;
+        }
     }
     
     /**
@@ -203,11 +211,12 @@ public class AttendanceSession {
     }
     
     /**
-     * Cancel a session that hasn't started yet.
+     * Cancel a session.
+     * Can cancel SCHEDULED or ACTIVE sessions, but not sessions that have already ended.
      */
     public void cancel() {
-        if (hasEnded() || isActive()) {
-            throw new IllegalStateException("Cannot cancel a session that has already started or ended");
+        if (hasEnded()) {
+            throw new IllegalStateException("Cannot cancel a session that has already ended");
         }
         this.status = AttendanceConstants.SESSION_STATUS_CANCELLED;
     }

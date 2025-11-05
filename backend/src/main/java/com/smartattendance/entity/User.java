@@ -293,7 +293,11 @@ public class User {
                 .count();
         
         int attendanceRate = Math.round((float) presentSessions / totalSessions * 100);
-        int punctualityRate = Math.round((float) (totalSessions - lateSessions) / totalSessions * 100);
+        // Punctuality should only consider attended sessions (PRESENT + LATE), not absent sessions
+        // Formula: (on-time sessions) / (attended sessions) * 100
+        int punctualityRate = presentSessions > 0 
+            ? Math.round((float) (presentSessions - lateSessions) / presentSessions * 100)
+            : 0;
         
         return new AttendanceStatistics(totalSessions, presentSessions, lateSessions, attendanceRate, punctualityRate);
     }

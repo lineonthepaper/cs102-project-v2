@@ -21,7 +21,6 @@ function Attendance() {
     session_date: '',
     scheduled_start_time: '',
     scheduled_end_time: '',
-    status: 'SCHEDULED',
     notes: ''
   })
 
@@ -750,12 +749,12 @@ function Attendance() {
       }
 
       // Transform frontend form to backend DTO format
+      // Status is automatically determined by backend based on date/time
       const requestBody = {
         sectionId: parseInt(sessionForm.section_id),
         sessionDate: sessionForm.session_date,
         scheduledStartTime: sessionForm.scheduled_start_time,
         scheduledEndTime: sessionForm.scheduled_end_time,
-        status: sessionForm.status,
         notes: sessionForm.notes || null
       }
 
@@ -796,7 +795,6 @@ function Attendance() {
       session_date: session.session_date,
       scheduled_start_time: session.scheduled_start_time,
       scheduled_end_time: session.scheduled_end_time,
-      status: session.status,
       notes: session.notes || ''
     })
     setShowSessionModal(true)
@@ -808,7 +806,6 @@ function Attendance() {
       session_date: '',
       scheduled_start_time: '',
       scheduled_end_time: '',
-      status: 'SCHEDULED',
       notes: ''
     })
   }
@@ -912,7 +909,10 @@ function Attendance() {
         headers: { 'Content-Type': 'application/json' }
       })
 
-      if (!response.ok) throw new Error('Failed to cancel session')
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to cancel session' }))
+        throw new Error(errorData.message || errorData.error || 'Failed to cancel session')
+      }
 
       await fetchSessions()
       alert('Session cancelled successfully')
@@ -1750,20 +1750,6 @@ function Attendance() {
                     required
                   />
                 </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Status</label>
-                <select
-                  value={sessionForm.status}
-                  onChange={(e) => setSessionForm({ ...sessionForm, status: e.target.value })}
-                  className="form-input"
-                >
-                  <option value="SCHEDULED">Scheduled</option>
-                  <option value="IN_PROGRESS">In Progress</option>
-                  <option value="COMPLETED">Completed</option>
-                  <option value="CANCELLED">Cancelled</option>
-                </select>
               </div>
 
               <div className="form-group" style={{ marginBottom: '0' }}>

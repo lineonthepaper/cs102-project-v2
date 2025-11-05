@@ -329,7 +329,12 @@ function Students() {
     const absentSessions = Math.max(totalSessions - presentSessions, 0)
 
     const attendanceRate = selectedStudent.attendanceRate ?? (totalSessions > 0 ? Math.round((presentSessions / totalSessions) * 100) : 0)
-    const punctualityRate = selectedStudent.punctualityRate ?? (totalSessions > 0 ? Math.round(((totalSessions - lateSessions) / totalSessions) * 100) : 0)
+    // Punctuality should only consider attended sessions (PRESENT + LATE), not absent sessions
+    // Formula: (on-time sessions) / (attended sessions) * 100
+    // If no present sessions, punctuality is not applicable (show 0% or recalculate to override backend bug)
+    const punctualityRate = presentSessions > 0 
+      ? (selectedStudent.punctualityRate ?? Math.round(((presentSessions - lateSessions) / presentSessions) * 100))
+      : 0 // Always 0 when no present sessions, regardless of backend value
 
     const metrics = [
       { key: 'totalSessions', label: 'Total Sessions', value: totalSessions },
@@ -892,7 +897,11 @@ function Students() {
             {filteredStudents.map((student) => {
               // Backend now provides pre-calculated stats filtered by course/section
               const attendanceRateValue = student.attendanceRate ?? 0
-              const punctualityRateValue = student.punctualityRate ?? 0
+              // Punctuality should be 0% when no present sessions, regardless of backend value
+              const presentSessions = student.presentSessions ?? 0
+              const punctualityRateValue = presentSessions > 0 
+                ? (student.punctualityRate ?? 0)
+                : 0 // Always 0 when no present sessions
               return (
                 <tr key={student.displayId || student.id}>
                   <td className="student-id">{student.displayId || student.id}</td>
