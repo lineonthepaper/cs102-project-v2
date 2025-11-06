@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.List;
@@ -33,9 +34,9 @@ public class StudentController {
             @RequestParam(required = false) Long courseId,
             @RequestParam(required = false) Long sectionId,
             @RequestParam(required = false, defaultValue = "false") boolean summary) {
-        logger.info("Fetching students - summary: {}, courseId: {}, sectionId: {}", 
-                    summary, courseId, sectionId);
-        
+        logger.info("Fetching students - summary: {}, courseId: {}, sectionId: {}",
+                summary, courseId, sectionId);
+
         List<StudentDTO> students;
         if (summary) {
             // Lightweight endpoint for list views
@@ -44,9 +45,39 @@ public class StudentController {
             // Full data with attendance records (for compatibility)
             students = studentService.getAllStudents();
         }
-        
+
         logger.info("Retrieved {} students", students.size());
         return ResponseEntity.ok(students);
+    }
+
+    @PostMapping("/import")
+    public ResponseEntity<Map<String, Object>> importStudents(
+            @RequestParam("file") MultipartFile zipFile) {
+
+        logger.info("Importing students from ZIP file: {}", zipFile.getOriginalFilename());
+
+        try {
+            if (!zipFile.getOriginalFilename().toLowerCase().endsWith(".zip")) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "File must be a ZIP file"));
+            }
+
+            Map<String, Object> result = studentService.importStudentsFromZip(zipFile);
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(result);
+
+        } catch (IllegalArgumentException e) {
+            logger.error("Validation error: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", e.getMessage()));
+        } catch (Exception e) {
+            logger.error("Failed to import from ZIP", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Failed to process ZIP file: " + e.getMessage()));
+        }
     }
 
     @GetMapping("/{id}")
@@ -61,12 +92,12 @@ public class StudentController {
     public ResponseEntity<Map<String, Object>> createStudent(@Valid @RequestBody CreateStudentRequest request) {
         logger.info("Creating student with email: {}", request.getEmail());
         StudentDTO student = studentService.createStudent(request);
-        
+
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("message", "Student added successfully!");
         response.put("student", student);
-        
+
         logger.info("Student created successfully with ID: {}", student.getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -77,12 +108,12 @@ public class StudentController {
             @Valid @RequestBody UpdateStudentRequest request) {
         logger.info("Updating student: {}", id);
         StudentDTO student = studentService.updateStudent(id, request);
-        
+
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("message", "Student updated successfully!");
         response.put("student", student);
-        
+
         logger.info("Student updated successfully: {}", id);
         return ResponseEntity.ok(response);
     }
@@ -93,11 +124,11 @@ public class StudentController {
             @Valid @RequestBody UpdateEnrollmentRequest request) {
         logger.info("Updating enrollments for student: {}", id);
         studentService.updateEnrollments(id, request);
-        
+
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("message", "Enrollments updated successfully");
-        
+
         logger.info("Enrollments updated successfully for student: {}", id);
         return ResponseEntity.ok(response);
     }
@@ -109,5 +140,5 @@ public class StudentController {
         logger.info("Student deleted successfully: {}", id);
         return ResponseEntity.ok(Map.of("message", "Student deleted successfully"));
     }
-}
 
+}
