@@ -39,6 +39,53 @@ function Home() {
     }
   };
 
+  const handleImportStudents = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      alert('Please upload a ZIP file containing a CSV and student image folders');
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('http://localhost:8080/api/students/import', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Import failed');
+      }
+
+      let message = `Successfully imported ${result.imported} out of ${result.total} students!`;
+      if (result.errors && result.errors.length > 0) {
+        message += `\n\nErrors:\n${result.errors.slice(0, 5).join('\n')}`;
+        if (result.errors.length > 5) {
+          message += `\n... and ${result.errors.length - 5} more errors`;
+        }
+      }
+
+      alert(message);
+      event.target.value = '';
+
+    } catch (error) {
+      console.error("Import failed:", error);
+      alert(`Failed to import students: ${error.message}`);
+      event.target.value = '';
+    }
+  };
+
+  const triggerFileInput = () => {
+    document.getElementById('csvFileInput').click();
+  };
+
   return (
     <div className="container">
       <div className="header">
@@ -112,11 +159,24 @@ function Home() {
         </div>
 
         <div className="card">
-          <h3>Download Report</h3>
-          <p>View attendance analytics</p>
-          <button onClick={downloadReport} className="btn btn-secondary">
-            Export Report to CSV
-          </button>
+          <h3>Import / Export</h3>
+          <p>Import students from CSV or export database report</p>
+          <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+            <input
+              id="csvFileInput"
+              type="file"
+              accept=".zip"
+              style={{ display: 'none' }}
+              onChange={handleImportStudents}
+            />
+
+            <button onClick={triggerFileInput} className="btn btn-secondary">
+              Import Students (ZIP)
+            </button>
+            <button onClick={downloadReport} className="btn btn-secondary">
+              Export Report to CSV
+            </button>
+          </div>
         </div>
       </div>
     </div>
