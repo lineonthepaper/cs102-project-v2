@@ -1,6 +1,7 @@
 import { useState, useEffect, Fragment, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabase'
+import { useRole } from './role'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 
@@ -74,6 +75,7 @@ function Students() {
       setShowModal(false)
     }
   }, [filteredStudents, selectedStudent])
+  const userRole = useRole();
 
   const fetchStudents = async () => {
     try {
@@ -955,12 +957,15 @@ function Students() {
                       >
                         Edit
                       </button>
-                      <button
+                      {userRole === "admin" && (
+                        <button
                         onClick={() => handleDeleteStudent(student)}
                         className="btn btn-small btn-action"
                       >
                         Delete
                       </button>
+                      )}
+                      
                     </div>
                   </td>
                 </tr>

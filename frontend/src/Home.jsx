@@ -2,20 +2,12 @@ import { useAuth } from "./AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase";
+import { useRole } from "./role";
 
 function Home() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [userRole, setUserRole] = useState("Loading...");
-
-  useEffect(() => {
-    if (user) {
-      if (user.user.isInstructor) setUserRole("Instructor");
-      else if (user.user.isTA) setUserRole("Teaching Assistant");
-      else if (user.user.isStudent) setUserRole("Student");
-      else setUserRole("Admin");
-    }
-  }, [user]);
+  const userRole = useRole();
 
   const handleLogout = async () => {
     logout();
@@ -45,7 +37,7 @@ function Home() {
         <div className="header-content">
           <div className="header-title">
             <h1>Smart Attendance System</h1>
-            <span className="role-text">{userRole}</span>
+            <span className="role-text">{user.user.firstName} {user.user.lastName} ({userRole})</span>
           </div>
           <div className="header-actions">
             <button onClick={handleLogout} className="btn btn-secondary-small">
@@ -56,7 +48,8 @@ function Home() {
       </div>
 
       <div className="dashboard-grid">
-        <div className="card">
+        {(userRole === "admin" || userRole === "instructor") && (
+          <div className="card">
           <h3>Students</h3>
           <p>Manage student records, enrollments, and face recognition data</p>
           <button
@@ -66,8 +59,10 @@ function Home() {
             Manage Students
           </button>
         </div>
-
-        <div className="card">
+        )}
+        
+        
+          <div className="card">
           <h3>Teaching Assistants</h3>
           <p>Manage Teaching Assistant status and section assignments</p>
           <button
@@ -77,8 +72,9 @@ function Home() {
             Manage Teaching Assistants
           </button>
         </div>
-
-        <div className="card">
+        
+        {(userRole === "admin" || userRole === "instructor") && (
+          <div className="card">
           <h3>Instructors</h3>
           <p>Manage instructor accounts and teaching assignments</p>
           <button
@@ -89,6 +85,9 @@ function Home() {
           </button>
         </div>
 
+        )}
+        
+        {(userRole === "admin" || userRole === "instructor") && (
         <div className="card">
           <h3>Classes</h3>
           <p>Create and manage course sections and schedules</p>
@@ -99,6 +98,8 @@ function Home() {
             Manage Classes
           </button>
         </div>
+        )}
+        
 
         <div className="card">
           <h3>Mark Attendance</h3>

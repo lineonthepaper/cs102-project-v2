@@ -2,6 +2,7 @@ import { useAuth } from './AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { supabase } from './supabase'
+import { useRole } from './role'
 
 const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
@@ -29,6 +30,7 @@ function TeachingAssistants() {
   const [taCourseFilter, setTaCourseFilter] = useState('all')
   const [taType, setTaType] = useState('student') // 'student' or 'instructor'
   const [modalKey, setModalKey] = useState(0)
+  const userRole = useRole();
 
   useEffect(() => {
     fetchInitialData()
@@ -136,6 +138,7 @@ function TeachingAssistants() {
       })
 
       setTaAssignments(transformedAssignments)
+      console.log(transformedAssignments);
     } catch (error) {
       console.error('Error fetching TA assignments:', error)
       throw error
@@ -538,12 +541,15 @@ function TeachingAssistants() {
 
       <div className="table-container">
         <div className="table-header-actions">
-          <button
+          {(userRole === "admin" || userRole === "instructor") && (
+            <button
             onClick={openAddTAModal}
             className="btn btn-primary-small"
           >
             Add Teaching Assistant
           </button>
+          )}
+          
         </div>
         <table className="data-table">
           <thead>
@@ -553,7 +559,7 @@ function TeachingAssistants() {
               <th>Email</th>
               <th>Type</th>
               <th>Assigned Sections</th>
-              <th>Actions</th>
+              {(userRole==="instructor" || userRole === "admin") &&(<th>Actions</th>)}
             </tr>
           </thead>
           <tbody>
@@ -574,23 +580,30 @@ function TeachingAssistants() {
                       <span className="text-muted">0</span>
                     )}
                   </td>
+                  {(userRole==="instructor" || userRole === "admin" )&&(
                   <td>
                     <div className="action-buttons">
-                      <button
+                        <button
                         onClick={() => openTAModal(user)}
                         className="btn btn-small btn-action"
                       >
                         Manage Sections
                       </button>
-                      <button
+                      
+                      
+                      {userRole === "admin" && (
+                        <button
                         onClick={() => removeTA(user)}
                         className="btn btn-small btn-action"
                       >
                         Remove Teaching Assistant
                       </button>
+                      )}
                     </div>
                   </td>
+                   )}
                 </tr>
+               
               )
             })}
           </tbody>

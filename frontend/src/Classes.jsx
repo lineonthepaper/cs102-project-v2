@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabase'
+import { useRole } from './role'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 
@@ -56,6 +57,7 @@ function Classes() {
   }
   
   const semesterOptions = [1, 2]
+  const userRole = useRole();
 
   useEffect(() => {
     fetchInitialData()
@@ -607,12 +609,15 @@ function Classes() {
                           >
                             Edit
                           </button>
-                          <button
+                          {userRole === "admin" && (
+                            <button
                             onClick={() => deleteCourse(course.id)}
                             className="btn btn-small btn-action"
                           >
                             Delete
                           </button>
+                          )}
+                          
                         </div>
                       </td>
                     </tr>

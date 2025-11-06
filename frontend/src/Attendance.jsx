@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabase'
+import { useAuth } from './AuthContext'
+import { useRole } from './role'
 
 const API_BASE_URL = 'http://localhost:8080'
 const SCAN_SKIP_DURATION_MS = 8000
@@ -13,7 +15,7 @@ function Attendance() {
   const [sectionList, setSectionList] = useState([])
   const [sessionList, setSessionList] = useState([])
   const [filteredSessions, setFilteredSessions] = useState([])
-  const [activeTab, setActiveTab] = useState('active') // 'active' or 'archived'
+  const [activeTab, setActiveTab] = useState('active') 
   const [showSessionModal, setShowSessionModal] = useState(false)
   const [editingSession, setEditingSession] = useState(null)
   const [sessionForm, setSessionForm] = useState({
@@ -23,6 +25,7 @@ function Attendance() {
     scheduled_end_time: '',
     notes: ''
   })
+  const [myAssignments, setMyAssignments] = useState([]);
 
   // Attendance Marking State
   const [showMarkingModal, setShowMarkingModal] = useState(false)
@@ -64,6 +67,9 @@ function Attendance() {
   // Search and Filter State (Marking Modal)
   const [markingSearchTerm, setMarkingSearchTerm] = useState('')
   const [statusFilterMarking, setStatusFilterMarking] = useState('all')
+  const {user} = useAuth();
+  const userRole = useRole();
+ 
 
   // Get unique sections (no duplicates from different years/semesters)
   const uniqueSections = useMemo(() => {
@@ -83,7 +89,7 @@ function Attendance() {
 
   useEffect(() => {
     filterAndSortSessions()
-  }, [sessionList, searchTerm, sortBy, sortOrder, sectionFilter, yearFilter, semesterFilter, statusFilterSessions, activeTab])
+  }, [sessionList, searchTerm, sortBy, sortOrder, sectionFilter, yearFilter, semesterFilter, statusFilterSessions, activeTab,myAssignments])
 
   useEffect(() => {
     filterStudents()
@@ -99,7 +105,6 @@ function Attendance() {
       stopCamera()
       return
     }
-    // Start camera and immediately begin scanning when modal opens
     startCamera()
     return () => {
       stopCamera()
@@ -110,7 +115,8 @@ function Attendance() {
     try {
       await Promise.all([
         fetchSections(),
-        fetchSessions()
+        fetchSessions(),
+        fetchMyAssignments(),
       ])
     } catch (error) {
       console.error('Error fetching initial data:', error)
@@ -119,17 +125,55 @@ function Attendance() {
     }
   }
 
+  const fetchMyAssignments = async () => {
+  try {
+    let endpoint = '';
+    if (userRole === 'instructor') {
+      endpoint = `${API_BASE_URL}/api/instructors`;
+    } else if (userRole === 'teaching assistant') {
+      endpoint = `${API_BASE_URL}/api/teaching-assistants`;
+    }
+
+    const response = await fetch(endpoint);
+    if (!response.ok) throw new Error(`Failed to fetch ${userRole}s`);
+
+    const data = await response.json();
+    const currentUser = data.find((item) => item.id === user.user.id);
+
+    if (!currentUser) {
+      setMyAssignments([]);
+      return;
+    }
+  
+    const assignments =
+      userRole === 'instructor'
+        ? (currentUser.sectionAssignments || []).map((a) => a.sectionId)
+        : (currentUser.taAssignments || []).map((a) => a.sectionId);
+
+    setMyAssignments(assignments);
+
+  } catch (err) {
+    console.error("Error fetching my assignments:", err);
+  }
+};
+
+
+
   const filterAndSortSessions = () => {
     let filtered = [...sessionList]
 
-    // Filter by archive status based on activeTab
+
+
+    if (userRole === 'instructor' || userRole === 'teaching assistant') {
+    filtered = filtered.filter(s => myAssignments.includes(s.section_id));
+  }
+
     if (activeTab === 'archived') {
       filtered = filtered.filter(s => s.status === 'ARCHIVED')
     } else {
       filtered = filtered.filter(s => s.status !== 'ARCHIVED')
     }
 
-    // Apply search filter
     if (searchTerm) {
       filtered = filtered.filter(session =>
         session.sections?.section_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -138,27 +182,27 @@ function Attendance() {
       )
     }
 
-    // Apply section filter
+
     if (sectionFilter !== 'all') {
       filtered = filtered.filter(s => s.section_id === parseInt(sectionFilter))
     }
 
-    // Apply year filter
+
     if (yearFilter !== 'all') {
       filtered = filtered.filter(s => s.sections?.year === parseInt(yearFilter))
     }
 
-    // Apply semester filter
+  
     if (semesterFilter !== 'all') {
       filtered = filtered.filter(s => s.sections?.semester === parseInt(semesterFilter))
     }
 
-    // Apply status filter
+
     if (statusFilterSessions !== 'all') {
       filtered = filtered.filter(s => s.status === statusFilterSessions)
     }
 
-    // Apply sorting
+
     if (sortBy !== 'default') {
       filtered.sort((a, b) => {
         let aVal = a[sortBy]
