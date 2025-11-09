@@ -116,6 +116,8 @@ function Students() {
           status: record.status,
           checkin_time: record.checkinTime,
           checkout_time: record.checkoutTime,
+          confidence_level: record.confidenceLevel,
+          is_automatic: record.isAutomatic,
           attendance_sessions: record.attendanceSession ? {
             session_date: record.attendanceSession.sessionDate,
             sections: record.attendanceSession.section ? {
@@ -415,6 +417,8 @@ function Students() {
           status: record.status,
           checkin_time: record.checkinTime,
           checkout_time: record.checkoutTime,
+          confidence_level: record.confidenceLevel,
+          is_automatic: record.isAutomatic,
           attendance_sessions: record.attendanceSession ? {
             session_date: record.attendanceSession.sessionDate,
             sections: record.attendanceSession.section ? {

@@ -209,7 +209,9 @@ public class AttendanceService {
             record.setUserId(studentId);
             record.setStatus(AttendanceStatus.ABSENT);
             record.setCheckinTime(null); // No check-in time for absent
+            record.setAutomatic(true);
             record.setNotes("Auto-marked absent when session closed");
+            record.setConfidenceLevel(0);
             recordRepository.save(record);
         }
         
@@ -244,6 +246,8 @@ public class AttendanceService {
             record.setSessionId(request.getSessionId());
             record.setUserId(request.getUserId());
             record.setNotes(request.getNotes());
+            record.setAutomatic(request.isAutomatic());
+            record.setConfidenceLevel(request.getConfidenceLevel());
     
             // Parse checkin time
             LocalDateTime checkinTime = request.getCheckinTime() != null && !request.getCheckinTime().isEmpty()

@@ -649,7 +649,7 @@ function Attendance() {
 
     try {
       setScannerMessage(`Recording attendance for ${student.displayId || student.id}...`)
-      await markAttendance(student.id, status, '', checkInTime)
+      await markAttendance(student.id, status, '', checkInTime, recognizedCandidate.similarity)
       recordSkipForStudent(student.id)
       
       // Clear candidate immediately to hide profile card, show success message
@@ -1023,7 +1023,9 @@ function Attendance() {
           status: record.status,
           checkin_time: record.checkinTime,
           checkout_time: record.checkoutTime,
-          notes: record.notes
+          notes: record.notes,
+          confidence_level: record.confidenceLevel,
+          is_automatic: record.isAutomatic
         }
       })
       setAttendanceRecords(recordsMap)
@@ -1034,14 +1036,17 @@ function Attendance() {
     }
   }
 
-  const markAttendance = async (userId, status, notes = '', checkinTime = null) => {
+  const markAttendance = async (userId, status, notes = '', checkinTime = null, similarity = -1) => {
     try {
+      console.log(similarity !== 0)
       const requestBody = {
         sessionId: selectedSession.id,
         userId: userId,
         status: status,
         checkinTime: checkinTime || (status === 'PRESENT' || status === 'LATE' ? new Date().toISOString() : null),
-        notes: notes || null
+        notes: notes || null,
+        confidenceLevel: similarity,
+        isAutomatic: similarity !== -1
       }
 
       const response = await fetch(`${API_BASE_URL}/api/attendance/records`, {
@@ -1067,7 +1072,9 @@ function Attendance() {
           status: savedRecord.status,
           checkin_time: savedRecord.checkinTime,
           checkout_time: savedRecord.checkoutTime,
-          notes: savedRecord.notes
+          notes: savedRecord.notes,
+          confidence_level: savedRecord.similarity,
+          is_automatic: savedRecord.isAutomatic
         }
       }))
     } catch (error) {

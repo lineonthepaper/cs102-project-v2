@@ -187,6 +187,8 @@ class AttendanceServiceTest {
         request.setUserId("S0000001");
         request.setStatus("PRESENT");
         request.setCheckinTime(java.time.LocalDateTime.now().toString());
+        request.setAutomatic(false);
+        request.setConfidenceLevel(0.99);
 
         when(recordRepository.findBySessionIdAndUserId(1L, "S0000001")).thenReturn(Optional.empty());
         when(recordRepository.save(any(AttendanceRecord.class))).thenReturn(testRecord);
@@ -209,6 +211,8 @@ class AttendanceServiceTest {
         request.setUserId("S0000001");
         request.setStatus("LATE");
         request.setCheckinTime(java.time.LocalDateTime.now().toString());
+        request.setAutomatic(false);
+        request.setConfidenceLevel(0.99);
 
         when(recordRepository.findBySessionIdAndUserId(1L, "S0000001")).thenReturn(Optional.of(testRecord));
         when(recordRepository.save(any(AttendanceRecord.class))).thenReturn(testRecord);

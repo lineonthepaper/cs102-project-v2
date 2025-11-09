@@ -3,6 +3,7 @@ package com.smartattendance.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.AllArgsConstructor;
 import java.time.LocalDateTime;
 import java.time.Duration;
@@ -29,18 +30,29 @@ public class AttendanceRecord {
     @JoinColumn(name = "session_id", insertable = false, updatable = false)
     private AttendanceSession attendanceSession;
 
+    @Setter
     @Column(name = "status")
     @Convert(converter = AttendanceStatusConverter.class)
     private AttendanceStatus status;  
 
+    @Setter
     @Column(name = "checkin_time")
     private LocalDateTime checkinTime;
 
+    @Setter
     @Column(name = "checkout_time")
     private LocalDateTime checkoutTime;
 
     @Column(name = "notes")
     private String notes;
+
+    @Setter
+    @Column(name = "is_automatic")
+    private boolean isAutomatic;
+
+    @Setter
+    @Column(name = "confidence_level") 
+    private double confidenceLevel;
     
     public void setId(Long id) {
         this.id = id;
@@ -62,18 +74,6 @@ public class AttendanceRecord {
     
     public void setAttendanceSession(AttendanceSession attendanceSession) {
         this.attendanceSession = attendanceSession;
-    }
-    
-    public void setStatus(AttendanceStatus status) {
-        this.status = status;
-    }
-    
-    public void setCheckinTime(LocalDateTime checkinTime) {
-        this.checkinTime = checkinTime;
-    }
-    
-    public void setCheckoutTime(LocalDateTime checkoutTime) {
-        this.checkoutTime = checkoutTime;
     }
     
     public void setNotes(String notes) {
