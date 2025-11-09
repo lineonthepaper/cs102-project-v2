@@ -47,6 +47,8 @@ dependencies {
     implementation("org.openpnp:opencv:4.9.0-0")
 
     implementation("org.apache.commons:commons-csv:1.10.0")
+    implementation("org.apache.poi:poi-ooxml:5.2.5")
+
 }
 
 tasks.withType<Test> {

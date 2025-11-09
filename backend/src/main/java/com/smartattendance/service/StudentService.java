@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,6 +34,9 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 @Service
 public class StudentService {
@@ -526,9 +530,16 @@ public class StudentService {
             Files.createDirectories(extractDir);
             extractZipFile(zipFile.getInputStream(), extractDir);
 
-            Path csvFile = findSingleCsvFile(extractDir);
+            Path dataFile = findSingleDataFile(extractDir);
 
-            List<CreateStudentRequest> students = parseCsvWithImages(csvFile, extractDir);
+            List<CreateStudentRequest> students;
+            if (dataFile.toString().toLowerCase().endsWith(".csv")) {
+                students = parseCsvWithImages(dataFile, extractDir);
+            } else if (dataFile.toString().toLowerCase().endsWith(".xlsx")) {
+                students = parseXlsxWithImages(dataFile, extractDir);
+            } else {
+                throw new IllegalArgumentException("Unsupported file format");
+            }
 
             List<StudentDTO> importedStudents = new ArrayList<>();
             List<String> errors = new ArrayList<>();
@@ -594,12 +605,12 @@ public class StudentService {
         }
     }
 
-    private Path findSingleCsvFile(Path extractDir) throws IOException {
-        List<Path> csvFiles = Files.walk(extractDir, 3) 
+    private Path findSingleDataFile(Path extractDir) throws IOException {
+        List<Path> csvFiles = Files.walk(extractDir, 3)
                 .filter(Files::isRegularFile)
                 .filter(p -> {
-                    String pathStr = p.toString();
-                    return pathStr.toLowerCase().endsWith(".csv")
+                    String pathStr = p.toString().toLowerCase();
+                    return (pathStr.endsWith(".csv") || pathStr.endsWith(".xlsx"))
                             && !pathStr.contains("__MACOSX")
                             && !pathStr.contains("/.")
                             && !p.getFileName().toString().startsWith(".");
@@ -607,7 +618,7 @@ public class StudentService {
                 .collect(Collectors.toList());
 
         if (csvFiles.isEmpty()) {
-            throw new IllegalArgumentException("ZIP must contain at least one CSV file");
+            throw new IllegalArgumentException("ZIP must contain at least one CSV or XLSX file");
         }
 
         if (csvFiles.size() > 1) {
@@ -615,7 +626,7 @@ public class StudentService {
             csvFiles.forEach(f -> logger.error("  - {}", f));
 
             throw new IllegalArgumentException(
-                    String.format("ZIP must contain exactly 1 CSV file, found %d", csvFiles.size()));
+                    String.format("ZIP must contain exactly 1 CSV or XLSX file, found %d", csvFiles.size()));
         }
 
         return csvFiles.get(0);
@@ -673,6 +684,97 @@ public class StudentService {
         }
 
         return students;
+    }
+
+    private String[] parseCSVLine(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder currentField = new StringBuilder();
+        boolean inQuotes = false;
+
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+
+            if (c == '"') {
+                inQuotes = !inQuotes;
+            } else if (c == ',' && !inQuotes) {
+                fields.add(currentField.toString());
+                currentField = new StringBuilder();
+            } else {
+                currentField.append(c);
+            }
+        }
+        fields.add(currentField.toString());
+
+        return fields.toArray(new String[0]);
+    }
+
+    private List<CreateStudentRequest> parseXlsxWithImages(Path xlsxFile, Path extractDir)
+            throws IOException {
+
+        List<CreateStudentRequest> students = new ArrayList<>();
+
+        try (FileInputStream fis = new FileInputStream(xlsxFile.toFile());
+                Workbook workbook = new XSSFWorkbook(fis)) {
+
+            Sheet sheet = workbook.getSheetAt(0);
+
+            // Skip header row
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row == null)
+                    continue;
+
+                Cell firstNameCell = row.getCell(0);
+                Cell lastNameCell = row.getCell(1);
+                Cell emailCell = row.getCell(2);
+
+                if (firstNameCell == null || lastNameCell == null || emailCell == null) {
+                    logger.warn("Skipping row {} with empty cells", i + 1);
+                    continue;
+                }
+
+                String firstName = getCellValueAsString(firstNameCell).trim();
+                String lastName = getCellValueAsString(lastNameCell).trim();
+                String email = getCellValueAsString(emailCell).trim();
+
+                if (firstName.isEmpty() || lastName.isEmpty() || email.isEmpty()) {
+                    logger.warn("Skipping row {} with empty fields", i + 1);
+                    continue;
+                }
+
+                String folderName = firstName + " " + lastName;
+                validateStudentFolder(extractDir, folderName, i + 1);
+                List<String> imageBase64List = findAndProcessStudentImages(extractDir, folderName);
+
+                CreateStudentRequest request = new CreateStudentRequest();
+                request.setFirstName(firstName);
+                request.setLastName(lastName);
+                request.setEmail(email);
+                request.setFaceImages(imageBase64List);
+
+                students.add(request);
+            }
+        }
+
+        if (students.isEmpty()) {
+            throw new IllegalArgumentException("No valid student records found in XLSX");
+        }
+
+        return students;
+    }
+
+    private String getCellValueAsString(Cell cell) {
+        if (cell == null)
+            return "";
+
+        switch (cell.getCellType()) {
+            case STRING:
+                return cell.getStringCellValue();
+            case NUMERIC:
+                return String.valueOf((long) cell.getNumericCellValue());
+            default:
+                return "";
+        }
     }
 
     private List<String> findAndProcessStudentImages(Path extractDir, String folderName)
@@ -735,28 +837,6 @@ public class StudentService {
             logger.info("Found folder: {}", found);
             return found;
         }
-    }
-
-    private String[] parseCSVLine(String line) {
-        List<String> fields = new ArrayList<>();
-        StringBuilder currentField = new StringBuilder();
-        boolean inQuotes = false;
-
-        for (int i = 0; i < line.length(); i++) {
-            char c = line.charAt(i);
-
-            if (c == '"') {
-                inQuotes = !inQuotes;
-            } else if (c == ',' && !inQuotes) {
-                fields.add(currentField.toString());
-                currentField = new StringBuilder();
-            } else {
-                currentField.append(c);
-            }
-        }
-        fields.add(currentField.toString());
-
-        return fields.toArray(new String[0]);
     }
 
     private boolean isImageFile(String filename) {

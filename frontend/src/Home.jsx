@@ -161,7 +161,7 @@ function Home() {
 
         <div className="card">
           <h3>Import / Export</h3>
-          <p>Import students from CSV or export database report</p>
+          <p>Import students from CSV/XLSX or export database report</p>
           <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
             <input
               id="csvFileInput"
@@ -175,7 +175,7 @@ function Home() {
               Import Students (ZIP)
             </button>
             <button onClick={downloadReport} className="btn btn-secondary">
-              Export Report to CSV
+              Export Report to CSV 
             </button>
           </div>
         </div>
