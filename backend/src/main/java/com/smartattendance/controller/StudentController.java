@@ -50,36 +50,6 @@ public class StudentController {
         return ResponseEntity.ok(students);
     }
 
-    @PostMapping("/import")
-    public ResponseEntity<Map<String, Object>> importStudents(
-            @RequestParam("file") MultipartFile zipFile) {
-
-        logger.info("Importing students from ZIP file: {}", zipFile.getOriginalFilename());
-
-        try {
-            if (!zipFile.getOriginalFilename().toLowerCase().endsWith(".zip")) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "success", false,
-                        "message", "File must be a ZIP file"));
-            }
-
-            Map<String, Object> result = studentService.importStudentsFromZip(zipFile);
-
-            return ResponseEntity.status(HttpStatus.CREATED).body(result);
-
-        } catch (IllegalArgumentException e) {
-            logger.error("Validation error: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", e.getMessage()));
-        } catch (Exception e) {
-            logger.error("Failed to import from ZIP", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", "Failed to process ZIP file: " + e.getMessage()));
-        }
-    }
-
     @GetMapping("/{id}")
     public ResponseEntity<StudentDTO> getStudentById(@PathVariable String id) {
         logger.info("Fetching student by ID: {}", id);
