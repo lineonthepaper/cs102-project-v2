@@ -47,6 +47,10 @@ dependencies {
     implementation("org.openpnp:opencv:4.9.0-0")
 
     implementation("org.apache.commons:commons-csv:1.10.0")
+
+    // Spring Email
+    implementation("org.springframework.boot:spring-boot-starter-mail")
+    implementation("org.eclipse.angus:angus-mail:2.0.3")
 }
 
 tasks.withType<Test> {
@@ -60,4 +64,7 @@ tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
     environment("SUPABASE_URL", System.getenv("SUPABASE_URL") ?: "")
     environment("SUPABASE_SERVICE_ROLE_KEY", System.getenv("SUPABASE_SERVICE_ROLE_KEY") ?: "")
     environment("JWT_SECRET", System.getenv("JWT_SECRET") ?: "")
+    environment("EMAILER_PASSWORD", System.getenv("EMAILER_PASSWORD") ?: "")
+    environment("EMAILER_ADDRESS", System.getenv("EMAILER_ADDRESS") ?: "")
+    environment("EMAILER_HOST", System.getenv("EMAILER_HOST") ?: "")
 }
