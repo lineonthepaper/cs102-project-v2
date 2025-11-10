@@ -28,7 +28,7 @@ public final class LightFaceDetection {
     public static DetectedObjects predict(Mat mat) throws IOException, ModelException, TranslateException {
         Image img = ImageFactory.getInstance().fromImage(MatConversionUtils.matToBufferedImage(mat));
 
-        double confThresh = 0.85f;
+        double confThresh = 0.95f;
         double nmsThresh = 0.45f;
         double[] variance = {0.1f, 0.2f};
         int topK = 5000;
