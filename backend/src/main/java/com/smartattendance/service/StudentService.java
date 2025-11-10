@@ -282,7 +282,7 @@ public class StudentService {
                 }
 
                 String faceImagesJson = serializeFaceImages(faceImages);
-                logger.info("Serialized face images JSON: {}", faceImagesJson);
+                // logger.info("Serialized face images JSON: {}", faceImagesJson);
 
                 // Build face profiles (embeddings) from provided images
                 List<FaceProfile> profiles = new ArrayList<>();
@@ -294,7 +294,7 @@ public class StudentService {
                 }
 
                 String faceProfilesJson = objectMapper.writeValueAsString(profiles);
-                logger.info("Serialized face profiles JSON: {}", faceProfilesJson);
+                // logger.info("Serialized face profiles JSON: {}", faceProfilesJson);
 
                 // Use native SQL to update face images and profiles
                 String sql = "UPDATE users SET face_images = CAST(:faceImages AS jsonb), face_profiles = CAST(:faceProfiles AS jsonb) WHERE id = :id";

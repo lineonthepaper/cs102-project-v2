@@ -6,6 +6,12 @@ import org.opencv.core.*;
 import org.opencv.imgcodecs.*;
 import org.opencv.imgproc.*;
 import org.opencv.objdetect.*;
+
+import ai.djl.modality.cv.output.DetectedObjects;
+import ai.djl.modality.cv.output.DetectedObjects.DetectedObject;
+import ai.djl.modality.cv.output.Point;
+import ai.djl.modality.cv.output.BoundingBox;
+
 // Note: Landmark alignment requires OpenCV contrib (org.opencv.face). Not available in current build.
 
 public class FaceDetectionUtils {
@@ -66,59 +72,36 @@ public class FaceDetectionUtils {
         int originalWidth = image.width();
         int originalHeight = image.height();
 
-        // --- SCRFD PATH (preferred) ---
-        OnnxFaceDetector scrfdDetector = getScrfd();
-        if (scrfdDetector != null) {
-            System.out.println("[FACE DETECTION] Using SCRFD ONNX detector...");
-            OnnxFaceDetector.MultiFaceResult result = scrfdDetector.detectMulti(image);
-            
-            if (result != null && result.faceCount > 1) {
-                System.out.println("[FACE DETECTION] FAILED: Multiple faces detected (" + result.faceCount + ")");
+        // light face detection!!!
+        try {
+            DetectedObjects detectedObjects = LightFaceDetection.predict(image);
+            int numObjects = detectedObjects.getNumberOfObjects();
+    
+            System.out.println("[FACE DETECTION] LightFace detected " + numObjects + " face(s)");
+    
+            if (numObjects == 1) {
+                DetectedObject face = detectedObjects.item(0);
+                BoundingBox bbox = face.getBoundingBox();
+                Point topLeft = bbox.getPoint();
+                Rect faceRect = new Rect((int)topLeft.getX(), (int)topLeft.getY(), originalWidth, originalHeight);
+
+                Mat resized = new Mat();
+                int interp = (originalWidth >= 112 || originalHeight >= 112) ? Imgproc.INTER_AREA : Imgproc.INTER_CUBIC;
+                Imgproc.resize(image, resized, new Size(112,112), 0, 0, interp);
+
                 System.out.println("[FACE DETECTION] ========================================\n");
-                return null; // Reject multi-face
-            }
-            
-            if (result != null && result.bestFace != null) {
-                OnnxFaceDetector.FaceWithLandmarks det = result.bestFace;
-                if (det.bbox != null && det.landmarks != null && det.landmarks.length == 5) {
-                    System.out.println("[FACE DETECTION] SCRFD found face with 5 landmarks");
-                    
-                    // Standard 5-point reference for ArcFace alignment (normalized to 112x112)
-                    Point[] std = new Point[] {
-                        new Point(38.2946f, 51.6963f),  // right eye
-                        new Point(73.5318f, 51.5014f),  // left eye
-                        new Point(56.0252f, 71.7366f),  // nose
-                        new Point(41.5493f, 92.3655f),  // right mouth
-                        new Point(70.7299f, 92.2041f)   // left mouth
-                    };
-                    
-                    // Use 3-point affine (eyes + nose)
-                    Point[] srcPtsArr = new Point[] { det.landmarks[0], det.landmarks[1], det.landmarks[2] };
-                    Point[] dstPtsArr = new Point[] { std[0], std[1], std[2] };
-                    MatOfPoint2f src = new MatOfPoint2f(srcPtsArr);
-                    MatOfPoint2f dst = new MatOfPoint2f(dstPtsArr);
-                    Mat affine = Imgproc.getAffineTransform(src, dst);
-                    
-                    if (affine != null && !affine.empty()) {
-                        Mat aligned = new Mat();
-                        Imgproc.warpAffine(image, aligned, affine, new Size(112,112), 
-                                          Imgproc.INTER_LINEAR, Core.BORDER_CONSTANT, new Scalar(128,128,128));
-                        
-                        // More lenient quality checks for SCRFD (already has good alignment)
-                        boolean ok = QualityUtils.passesQuality(aligned, 90, 30.0, 15.0, 240.0);
-                        if (!ok) {
-                            System.out.println("[FACE DETECTION] SCRFD face rejected by quality check");
-                            // Don't return null yet, try Haar fallback
-                        } else {
-                            System.out.println("[FACE DETECTION] SUCCESS: SCRFD with affine alignment");
-                            System.out.println("[FACE DETECTION] ========================================\n");
-                            return new FaceDetectionResult(aligned, det.bbox, originalWidth, originalHeight);
-                        }
-                    }
-                }
+                return new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight);
+            } else if (numObjects == 0) {
+                    System.out.println("[FACE DETECTION] FAILED: No face detected");
+                    System.out.println("[FACE DETECTION] ========================================\n");
+                    return null;
             } else {
-                System.out.println("[FACE DETECTION] SCRFD did not find valid face/landmarks");
+                System.out.println("[FACE DETECTION] FAILED: Multiple faces detected (" + numObjects + ")");
+                return null;
             }
+    
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
         }
 
         // --- HAAR FALLBACK ---
@@ -215,59 +198,30 @@ public class FaceDetectionUtils {
         int originalWidth = image.width();
         int originalHeight = image.height();
 
-        // Try SCRFD first
-        OnnxFaceDetector scrfdDetector = getScrfd();
-        if (scrfdDetector != null && scrfdDetector.isLoaded()) {
-            System.out.println("[MULTI-FACE DETECTION] Using SCRFD ONNX detector...");
-            java.util.List<OnnxFaceDetector.FaceWithLandmarks> allFaces = scrfdDetector.detectAllFaces(image);
+        // retina face detection!!! (multi)
+        try {
+            DetectedObjects detectedObjects = LightFaceDetection.predict(image);
+            int numObjects = detectedObjects.getNumberOfObjects();
+    
+            System.out.println("[FACE DETECTION] LightFace detected " + numObjects + " face(s)");
             
-            if (allFaces != null && !allFaces.isEmpty()) {
-                System.out.println("[MULTI-FACE DETECTION] SCRFD detected " + allFaces.size() + " raw face(s)");
-                
-                // Standard 5-point reference for ArcFace alignment
-                Point[] std = new Point[] {
-                    new Point(38.2946f, 51.6963f),  // right eye
-                    new Point(73.5318f, 51.5014f),  // left eye
-                    new Point(56.0252f, 71.7366f),  // nose
-                    new Point(41.5493f, 92.3655f),  // right mouth
-                    new Point(70.7299f, 92.2041f)   // left mouth
-                };
-                
-                int processedCount = 0;
-                for (OnnxFaceDetector.FaceWithLandmarks det : allFaces) {
-                    if (det.bbox != null && det.landmarks != null && det.landmarks.length == 5) {
-                        // Use 3-point affine (eyes + nose)
-                        Point[] srcPtsArr = new Point[] { det.landmarks[0], det.landmarks[1], det.landmarks[2] };
-                        Point[] dstPtsArr = new Point[] { std[0], std[1], std[2] };
-                        MatOfPoint2f src = new MatOfPoint2f(srcPtsArr);
-                        MatOfPoint2f dst = new MatOfPoint2f(dstPtsArr);
-                        Mat affine = Imgproc.getAffineTransform(src, dst);
-                        
-                        if (affine != null && !affine.empty()) {
-                            Mat aligned = new Mat();
-                            Imgproc.warpAffine(image, aligned, affine, new Size(112,112), 
-                                              Imgproc.INTER_LINEAR, Core.BORDER_CONSTANT, new Scalar(128,128,128));
-                            
-                            // Quality checks for SCRFD
-                            boolean ok = QualityUtils.passesQuality(aligned, 90, 30.0, 15.0, 240.0);
-                            if (ok) {
-                                results.add(new FaceDetectionResult(aligned, det.bbox, originalWidth, originalHeight));
-                                processedCount++;
-                            } else {
-                                System.out.println("[MULTI-FACE DETECTION] SCRFD face rejected by quality check");
-                                aligned.release();
-                            }
-                        }
-                    }
-                }
-                
-                System.out.println("[MULTI-FACE DETECTION] " + processedCount + " face(s) passed quality checks");
-                if (!results.isEmpty()) {
-                    System.out.println("[MULTI-FACE DETECTION] Successfully processed " + results.size() + " face(s) with SCRFD");
-                    System.out.println("[MULTI-FACE DETECTION] ========================================\n");
-                    return results;
-                }
+            for (int i = 0; i < numObjects; i++) {
+                DetectedObject face = detectedObjects.item(0);
+                BoundingBox bbox = face.getBoundingBox();
+                Point topLeft = bbox.getPoint();
+                Rect faceRect = new Rect((int)topLeft.getX(), (int)topLeft.getY(), originalWidth, originalHeight);
+
+                Mat resized = new Mat();
+                int interp = (originalWidth >= 112 || originalHeight >= 112) ? Imgproc.INTER_AREA : Imgproc.INTER_CUBIC;
+                Imgproc.resize(image, resized, new Size(112,112), 0, 0, interp);
+
+                System.out.println("[FACE DETECTION] ========================================\n");
+                results.add(new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight));
             }
+            return results;
+    
+        } catch (Exception e) {
+            System.out.println("error: " + e.getMessage());
         }
 
         // Fallback to Haar Cascade

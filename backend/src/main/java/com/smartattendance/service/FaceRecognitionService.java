@@ -195,7 +195,7 @@ public class FaceRecognitionService {
         }
 
         try {
-            System.out.println("[EMBEDDING] Computing embedding from 112x112 face region...");
+            System.out.println("[EMBEDDING] Computing embedding from face region...");
             float[] embedding = FaceEmbeddingUtils.faceToEmbedding(detectedFace, recognitionNet);
             System.out.println("[EMBEDDING] Successfully computed " + embedding.length + "-dimensional embedding");
             return Optional.of(embedding);
@@ -215,7 +215,7 @@ public class FaceRecognitionService {
         }
 
         try {
-            System.out.println("[EMBEDDING] Computing embedding from 112x112 face region...");
+            System.out.println("[EMBEDDING] Computing embedding from face region...");
             float[] embedding = FaceEmbeddingUtils.faceToEmbedding(result.getFaceMat(), recognitionNet);
             System.out.println("[EMBEDDING] Successfully computed " + embedding.length + "-dimensional embedding");
             return Optional.of(new EmbeddingWithBbox(embedding, result.getBoundingBox(), 
