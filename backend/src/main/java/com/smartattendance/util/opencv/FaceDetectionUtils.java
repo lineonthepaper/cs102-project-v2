@@ -11,8 +11,6 @@ import ai.djl.modality.cv.output.DetectedObjects;
 import ai.djl.modality.cv.output.DetectedObjects.DetectedObject;
 import ai.djl.modality.cv.output.Point;
 import ai.djl.modality.cv.output.BoundingBox;
-import ai.djl.modality.cv.output.Rectangle;
-
 
 // Note: Landmark alignment requires OpenCV contrib (org.opencv.face). Not available in current build.
 
@@ -84,36 +82,15 @@ public class FaceDetectionUtils {
             if (numObjects == 1) {
                 DetectedObject face = detectedObjects.item(0);
                 BoundingBox bbox = face.getBoundingBox();
-                Rectangle rectangle = bbox.getBounds();
-                // Rect faceRect = new Rect((int)rectangle.getX(), (int)rectangle.getY(), (int)rectangle.getWidth(), (int)rectangle.getHeight());
-                Rect faceRect = new Rect(
-                    new org.opencv.core.Point(rectangle.getX(), rectangle.getY()),
-                    new org.opencv.core.Point(rectangle.getX() + rectangle.getWidth(), rectangle.getY() - rectangle.getHeight())
-                );
-                
-                int centerX = faceRect.x + faceRect.width / 2;
-                int centerY = faceRect.y + faceRect.height / 2;
-                int maxSide = Math.max(faceRect.width, faceRect.height);
-                int sideWithMargin = (int) Math.round(maxSide * 1.2);
-                
-                int x = centerX - sideWithMargin / 2;
-                int y = centerY - sideWithMargin / 2;
-                x = Math.max(0, Math.min(x, image.width() - 1));
-                y = Math.max(0, Math.min(y, image.height() - 1));
-                int w = Math.min(sideWithMargin, image.width() - x);
-                int h = Math.min(sideWithMargin, image.height() - y);
-                int side = Math.min(w, h);
-                
-                Rect squareRoi = new Rect(x, y, side, side);
-                Mat croppedFace = new Mat(image, squareRoi);
+                Point topLeft = bbox.getPoint();
+                Rect faceRect = new Rect((int)topLeft.getX(), (int)topLeft.getY(), originalWidth, originalHeight);
 
                 Mat resized = new Mat();
                 int interp = (originalWidth >= 112 || originalHeight >= 112) ? Imgproc.INTER_AREA : Imgproc.INTER_CUBIC;
-                Imgproc.resize(croppedFace, resized, new Size(112,112), 0, 0, interp);
+                Imgproc.resize(image, resized, new Size(112,112), 0, 0, interp);
 
                 System.out.println("[FACE DETECTION] ========================================\n");
                 return new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight);
-                
             } else if (numObjects == 0) {
                     System.out.println("[FACE DETECTION] FAILED: No face detected");
                     System.out.println("[FACE DETECTION] ========================================\n");
@@ -231,31 +208,12 @@ public class FaceDetectionUtils {
             for (int i = 0; i < numObjects; i++) {
                 DetectedObject face = detectedObjects.item(0);
                 BoundingBox bbox = face.getBoundingBox();
-                Rectangle rectangle = bbox.getBounds();
-                Rect faceRect = new Rect(
-                    new org.opencv.core.Point(rectangle.getX(), rectangle.getY()),
-                    new org.opencv.core.Point(rectangle.getX() + rectangle.getWidth(), rectangle.getY() - rectangle.getHeight())
-                );
-                
-                int centerX = faceRect.x + faceRect.width / 2;
-                int centerY = faceRect.y + faceRect.height / 2;
-                int maxSide = Math.max(faceRect.width, faceRect.height);
-                int sideWithMargin = (int) Math.round(maxSide * 1.2);
-                
-                int x = centerX - sideWithMargin / 2;
-                int y = centerY - sideWithMargin / 2;
-                x = Math.max(0, Math.min(x, image.width() - 1));
-                y = Math.max(0, Math.min(y, image.height() - 1));
-                int w = Math.min(sideWithMargin, image.width() - x);
-                int h = Math.min(sideWithMargin, image.height() - y);
-                int side = Math.min(w, h);
-                
-                Rect squareRoi = new Rect(x, y, side, side);
-                Mat croppedFace = new Mat(image, squareRoi);
+                Point topLeft = bbox.getPoint();
+                Rect faceRect = new Rect((int)topLeft.getX(), (int)topLeft.getY(), originalWidth, originalHeight);
 
                 Mat resized = new Mat();
                 int interp = (originalWidth >= 112 || originalHeight >= 112) ? Imgproc.INTER_AREA : Imgproc.INTER_CUBIC;
-                Imgproc.resize(croppedFace, resized, new Size(112,112), 0, 0, interp);
+                Imgproc.resize(image, resized, new Size(112,112), 0, 0, interp);
 
                 System.out.println("[FACE DETECTION] ========================================\n");
                 results.add(new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight));
