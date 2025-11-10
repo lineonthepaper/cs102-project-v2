@@ -49,6 +49,9 @@ dependencies {
     implementation("org.apache.commons:commons-csv:1.10.0")
     implementation("org.apache.poi:poi-ooxml:5.2.5")
 
+    implementation(files("lib/djl.jar"))
+
+    implementation("ai.djl.pytorch:pytorch-model-zoo:0.35.0")
 }
 
 tasks.withType<Test> {

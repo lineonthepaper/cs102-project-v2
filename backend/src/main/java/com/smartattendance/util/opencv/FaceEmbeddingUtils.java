@@ -13,6 +13,10 @@ import org.opencv.core.Size;
 import org.opencv.dnn.Dnn;
 import org.opencv.dnn.Net;
 
+import com.smartattendance.exception.InvalidRequestException;
+
+import ai.djl.modality.cv.Image;
+
 public class FaceEmbeddingUtils {
     // Convert a single face Mat to embedding
     public static float[] faceToEmbedding(Mat face, Net net) {
@@ -31,9 +35,14 @@ public class FaceEmbeddingUtils {
 
     // Utility methods
     private static float[] matToFloatArray(Mat mat) {
-        float[] array = new float[(int) mat.total()];
-        mat.get(0, 0, array);
-        return array;
+        // float[] array = new float[(int) mat.total()];
+        // mat.get(0, 0, array);
+        try {
+            float[] array = FeatureExtraction.predict(mat);
+            return array;
+        } catch (Exception e) {
+            throw new InvalidRequestException(e.getMessage());
+        } 
     }
 
     private static float[] normalizeVector(float[] vector) {
