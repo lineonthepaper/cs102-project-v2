@@ -8,7 +8,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -37,6 +36,6 @@ public class UpdateStudentRequest {
     private String lastName;
     
     @Size(max = 8, message = "You can upload up to 8 face images")
-    private List<String> faceImages = new ArrayList<>();
+    private List<String> faceImages;
 }
 
