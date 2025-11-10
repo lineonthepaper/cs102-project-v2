@@ -260,19 +260,29 @@ public class StudentService {
         student.setFirstName(request.getFirstName());
         student.setLastName(request.getLastName());
 
-        // Update face images if provided
-        if (request.getFaceImages() != null && !request.getFaceImages().isEmpty()) {
-            try {
-                List<String> faceImages = request.getFaceImages().stream()
-                        .map(ImageConverter::base64ToBytes)
-                        .map(ImageConverter::bytesToBase64)
-                        .collect(Collectors.toList());
+        // Update face images if provided (including empty list to clear images)
+        // Persist basic field changes before handling face images (native updates bypass JPA tracking)
+        entityManager.flush();
 
-                if (faceImages.size() > 8) {
-                    throw new IllegalArgumentException("Face images cannot exceed 8 entries");
+        if (request.getFaceImages() != null) {
+            logger.info("Updating face images for student {}: {} images", studentId, request.getFaceImages().size());
+            try {
+                List<String> faceImages = new ArrayList<>();
+
+                // Only process if not empty
+                if (!request.getFaceImages().isEmpty()) {
+                    faceImages = request.getFaceImages().stream()
+                            .map(ImageConverter::base64ToBytes)
+                            .map(ImageConverter::bytesToBase64)
+                            .collect(Collectors.toList());
+
+                    if (faceImages.size() > 8) {
+                        throw new IllegalArgumentException("Face images cannot exceed 8 entries");
+                    }
                 }
 
                 String faceImagesJson = serializeFaceImages(faceImages);
+                logger.info("Serialized face images JSON: {}", faceImagesJson);
 
                 // Build face profiles (embeddings) from provided images
                 List<FaceProfile> profiles = new ArrayList<>();
@@ -284,6 +294,7 @@ public class StudentService {
                 }
 
                 String faceProfilesJson = objectMapper.writeValueAsString(profiles);
+                logger.info("Serialized face profiles JSON: {}", faceProfilesJson);
 
                 // Use native SQL to update face images and profiles
                 String sql = "UPDATE users SET face_images = CAST(:faceImages AS jsonb), face_profiles = CAST(:faceProfiles AS jsonb) WHERE id = :id";
@@ -293,18 +304,19 @@ public class StudentService {
                         .setParameter("id", studentId)
                         .executeUpdate();
 
-                logger.info("Face images and profiles updated for student: {}", studentId);
+                logger.info("Face images and profiles updated for student: {} ({} images, {} profiles)", studentId, faceImages.size(), profiles.size());
             } catch (Exception e) {
                 logger.error("Failed to update face images for student: {}", studentId, e);
                 throw new RuntimeException("Failed to update face images", e);
             }
         }
 
-        User updatedStudent = userRepository.save(student);
+        // Refresh the entity to get the updated face images from database
+        entityManager.refresh(student);
         logger.info("Student updated successfully: {}", studentId);
 
         // Return updated student without full attendance records for performance
-        return mapToStudentSummaryDTO(updatedStudent, Collections.emptyList());
+        return mapToStudentSummaryDTO(student, Collections.emptyList());
     }
 
     @Transactional
