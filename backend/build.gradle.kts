@@ -51,7 +51,11 @@ dependencies {
 
     implementation(files("lib/djl.jar"))
 
-    implementation("ai.djl.pytorch:pytorch-model-zoo:0.35.0")
+    implementation(platform("ai.djl:bom:0.34.0"))
+
+    implementation("ai.djl.pytorch:pytorch-engine")
+    implementation("ai.djl.pytorch:pytorch-native-cpu")
+    implementation("ai.djl.pytorch:pytorch-jni")
 }
 
 tasks.withType<Test> {

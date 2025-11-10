@@ -22,26 +22,9 @@ public class FaceRecognitionUtils {
     // Find the best match from training faces (single embedding per identity)
     public static ComparisonResult findBestMatch(Mat targetFace, Map<String, float[]> trainingEmbeddings,
             double similarityThreshold, Net net) {
-        float[] targetEmbedding = FaceEmbeddingUtils.faceToEmbedding(targetFace, net);
-        
-        List<ComparisonResult> results = new ArrayList<>();
-        Iterator<String> iter = trainingEmbeddings.keySet().iterator();
-        while (iter.hasNext()) {
-            String key = iter.next();
-            float similarity = cosineSimilarity(targetEmbedding, trainingEmbeddings.get(key));
-            // System.out.println(key + ":" + similarity + "%");
-            results.add(new ComparisonResult(key, similarity, similarity >= similarityThreshold));
-
+        if (trainingEmbeddings == null || trainingEmbeddings.isEmpty()) {
+            return null;
         }
-
-        return results;
-    }
-
-    // Find the best match from training faces
-    public static ComparisonResult findBestMatch(Mat targetFace, Map<String, float[]> trainingEmbeddings,
-            double similarityThreshold, Net net) {
-        List<ComparisonResult> results = compareWithTraining(targetFace, trainingEmbeddings, similarityThreshold, net);
-        ComparisonResult bestMatch = results.get(0);
 
         Map<String, List<float[]>> enrichedEmbeddings = trainingEmbeddings.entrySet()
                 .stream()

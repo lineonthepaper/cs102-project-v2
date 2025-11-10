@@ -10,6 +10,8 @@ import ai.djl.repository.zoo.ZooModel;
 import ai.djl.training.util.ProgressBar;
 import ai.djl.translate.TranslateException;
 import ai.djl.modality.cv.ImageFactory;
+import ai.djl.training.util.DownloadUtils;
+import ai.djl.ndarray.types.Shape;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -37,15 +39,18 @@ public class FeatureExtraction {
                         128.0f / 255.0f,
                         128.0f / 255.0f,
                         128.0f / 255.0f);
+
         String normalize = mean.stream().map(Object::toString).collect(Collectors.joining(","));
 
         Criteria<Image, float[]> criteria =
                 Criteria.builder()
                         .setTypes(Image.class, float[].class)
-                        .optModelName("face_feature") // specify model file prefix
+                        .optModelPath(Paths.get("src/main/resources/pytorch_models/face_feature.zip"))
+                        .optModelName("face_feature") 
                         .optArgument("normalize", normalize)
                         .optTranslatorFactory(new ImageFeatureExtractorFactory())
                         .optProgress(new ProgressBar())
+                        .optEngine("PyTorch") // Use PyTorch engine
                         .build();
 
         try (ZooModel<Image, float[]> model = criteria.loadModel()) {
