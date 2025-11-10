@@ -104,6 +104,7 @@ function Students() {
         last_name: student.lastName,
         email: student.email,
         enabled: student.enabled,
+        faceImages: student.faceImages || [],
         totalSessions: student.totalSessions,
         presentSessions: student.presentSessions,
         lateSessions: student.lateSessions,
@@ -792,7 +793,8 @@ function Students() {
         ...studentData,
         first_name: studentData.firstName,
         last_name: studentData.lastName,
-        displayId: studentData.displayId
+        displayId: studentData.displayId,
+        faceImages: studentData.faceImages || []
       }
       
       await openEditStudentModal(transformedStudent)
@@ -1361,11 +1363,15 @@ function Students() {
                 submitButton.disabled = true
                 
                 const formData = new FormData(e.target)
+                const faceImagesData = editFaceImages.map((image) => image.data);
+                console.log('Updating student with face images:', faceImagesData.length);
+                console.log('Face images preview:', faceImagesData.map(img => img.substring(0, 50) + '...'));
+
                 const studentData = {
                   email: formData.get('email'),
                   firstName: formData.get('firstName'),
                   lastName: formData.get('lastName'),
-                  faceImages: editFaceImages.map((image) => image.data)
+                  faceImages: faceImagesData
                 }
 
                 try {
