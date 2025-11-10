@@ -1,5 +1,6 @@
 package com.smartattendance.controller;
 
+import com.smartattendance.service.ExportService;
 import com.smartattendance.service.FullDatabaseExportService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -16,8 +17,13 @@ import java.io.IOException;
 @RequestMapping("/api/export")
 public class ExportController {
 
-    @Autowired
-    private FullDatabaseExportService fullDatabaseExportService;
+    private final FullDatabaseExportService fullDatabaseExportService;
+    private final ExportService exportService;
+
+    public ExportController(FullDatabaseExportService fullDatabaseExportService, ExportService exportService) {
+        this.fullDatabaseExportService = fullDatabaseExportService;
+        this.exportService = exportService;
+    }
 
     @GetMapping("/full-database-zip")
     public ResponseEntity<byte[]> exportFullDatabaseAsZip() {
@@ -36,5 +42,10 @@ public class ExportController {
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    @GetMapping("/test")
+    public void testEndpoint() {
+        exportService.exportSectionAsXLSX(1);
     }
 }
