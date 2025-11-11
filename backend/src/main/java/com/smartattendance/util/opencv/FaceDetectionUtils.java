@@ -1,5 +1,4 @@
 package com.smartattendance.util.opencv;
-import java.io.File;
 import java.util.List;
 
 import org.opencv.core.*;
@@ -9,44 +8,6 @@ import org.opencv.objdetect.*;
 // Note: Landmark alignment requires OpenCV contrib (org.opencv.face). Not available in current build.
 
 public class FaceDetectionUtils {
-
-    // Only one public detector. Prefer SCRFD ONNX, fallback to Haar cascade.
-    private static volatile OnnxFaceDetector scrfd = null;
-    private static final Object scrfdLock = new Object();
-    
-    /**
-     * Initialize SCRFD detector using ResourcePathUtils.
-     * Should be called once at application startup from a service with ResourcePathUtils.
-     */
-    public static void initializeScrfd(String modelPath) {
-        if (scrfd == null) {
-            synchronized (scrfdLock) {
-                if (scrfd == null) {
-                    if (modelPath != null && !modelPath.isEmpty()) {
-                        File f = new File(modelPath);
-                        if (f.exists()) {
-                            System.out.println("[SCRFD INIT] Loading SCRFD model from: " + modelPath);
-                            OnnxFaceDetector d = new OnnxFaceDetector(modelPath);
-                            if (d.isLoaded()) {
-                                scrfd = d;
-                                System.out.println("[SCRFD INIT] Successfully loaded SCRFD detector");
-                            } else {
-                                System.out.println("[SCRFD INIT] Failed to load SCRFD detector (model not loaded)");
-                            }
-                        } else {
-                            System.out.println("[SCRFD INIT] SCRFD model file not found at: " + modelPath);
-                        }
-                    } else {
-                        System.out.println("[SCRFD INIT] No SCRFD model path provided");
-                    }
-                }
-            }
-        }
-    }
-    
-    private static OnnxFaceDetector getScrfd() {
-        return scrfd;
-    }
 
     public static Mat getFaceFromImageBytes(byte[] imageBytes, CascadeClassifier faceDetector) {
         FaceDetectionResult result = getFaceFromImageBytesWithBbox(imageBytes, faceDetector);
@@ -66,63 +27,7 @@ public class FaceDetectionUtils {
         int originalWidth = image.width();
         int originalHeight = image.height();
 
-        // --- SCRFD PATH (preferred) ---
-        OnnxFaceDetector scrfdDetector = getScrfd();
-        if (scrfdDetector != null) {
-            System.out.println("[FACE DETECTION] Using SCRFD ONNX detector...");
-            OnnxFaceDetector.MultiFaceResult result = scrfdDetector.detectMulti(image);
-            
-            if (result != null && result.faceCount > 1) {
-                System.out.println("[FACE DETECTION] FAILED: Multiple faces detected (" + result.faceCount + ")");
-                System.out.println("[FACE DETECTION] ========================================\n");
-                return null; // Reject multi-face
-            }
-            
-            if (result != null && result.bestFace != null) {
-                OnnxFaceDetector.FaceWithLandmarks det = result.bestFace;
-                if (det.bbox != null && det.landmarks != null && det.landmarks.length == 5) {
-                    System.out.println("[FACE DETECTION] SCRFD found face with 5 landmarks");
-                    
-                    // Standard 5-point reference for ArcFace alignment (normalized to 112x112)
-                    Point[] std = new Point[] {
-                        new Point(38.2946f, 51.6963f),  // right eye
-                        new Point(73.5318f, 51.5014f),  // left eye
-                        new Point(56.0252f, 71.7366f),  // nose
-                        new Point(41.5493f, 92.3655f),  // right mouth
-                        new Point(70.7299f, 92.2041f)   // left mouth
-                    };
-                    
-                    // Use 3-point affine (eyes + nose)
-                    Point[] srcPtsArr = new Point[] { det.landmarks[0], det.landmarks[1], det.landmarks[2] };
-                    Point[] dstPtsArr = new Point[] { std[0], std[1], std[2] };
-                    MatOfPoint2f src = new MatOfPoint2f(srcPtsArr);
-                    MatOfPoint2f dst = new MatOfPoint2f(dstPtsArr);
-                    Mat affine = Imgproc.getAffineTransform(src, dst);
-                    
-                    if (affine != null && !affine.empty()) {
-                        Mat aligned = new Mat();
-                        Imgproc.warpAffine(image, aligned, affine, new Size(112,112), 
-                                          Imgproc.INTER_LINEAR, Core.BORDER_CONSTANT, new Scalar(128,128,128));
-                        
-                        // More lenient quality checks for SCRFD (already has good alignment)
-                        boolean ok = QualityUtils.passesQuality(aligned, 90, 30.0, 15.0, 240.0);
-                        if (!ok) {
-                            System.out.println("[FACE DETECTION] SCRFD face rejected by quality check");
-                            // Don't return null yet, try Haar fallback
-                        } else {
-                            System.out.println("[FACE DETECTION] SUCCESS: SCRFD with affine alignment");
-                            System.out.println("[FACE DETECTION] ========================================\n");
-                            return new FaceDetectionResult(aligned, det.bbox, originalWidth, originalHeight);
-                        }
-                    }
-                }
-            } else {
-                System.out.println("[FACE DETECTION] SCRFD did not find valid face/landmarks");
-            }
-        }
-
-        // --- HAAR FALLBACK ---
-        System.out.println("[FACE DETECTION] Falling back to Haar Cascade detector...");
+        System.out.println("[FACE DETECTION] Using Haar Cascade detector...");
         Mat gray = new Mat();
         Imgproc.cvtColor(image, gray, Imgproc.COLOR_BGR2GRAY);
         
@@ -215,63 +120,7 @@ public class FaceDetectionUtils {
         int originalWidth = image.width();
         int originalHeight = image.height();
 
-        // Try SCRFD first
-        OnnxFaceDetector scrfdDetector = getScrfd();
-        if (scrfdDetector != null && scrfdDetector.isLoaded()) {
-            System.out.println("[MULTI-FACE DETECTION] Using SCRFD ONNX detector...");
-            java.util.List<OnnxFaceDetector.FaceWithLandmarks> allFaces = scrfdDetector.detectAllFaces(image);
-            
-            if (allFaces != null && !allFaces.isEmpty()) {
-                System.out.println("[MULTI-FACE DETECTION] SCRFD detected " + allFaces.size() + " raw face(s)");
-                
-                // Standard 5-point reference for ArcFace alignment
-                Point[] std = new Point[] {
-                    new Point(38.2946f, 51.6963f),  // right eye
-                    new Point(73.5318f, 51.5014f),  // left eye
-                    new Point(56.0252f, 71.7366f),  // nose
-                    new Point(41.5493f, 92.3655f),  // right mouth
-                    new Point(70.7299f, 92.2041f)   // left mouth
-                };
-                
-                int processedCount = 0;
-                for (OnnxFaceDetector.FaceWithLandmarks det : allFaces) {
-                    if (det.bbox != null && det.landmarks != null && det.landmarks.length == 5) {
-                        // Use 3-point affine (eyes + nose)
-                        Point[] srcPtsArr = new Point[] { det.landmarks[0], det.landmarks[1], det.landmarks[2] };
-                        Point[] dstPtsArr = new Point[] { std[0], std[1], std[2] };
-                        MatOfPoint2f src = new MatOfPoint2f(srcPtsArr);
-                        MatOfPoint2f dst = new MatOfPoint2f(dstPtsArr);
-                        Mat affine = Imgproc.getAffineTransform(src, dst);
-                        
-                        if (affine != null && !affine.empty()) {
-                            Mat aligned = new Mat();
-                            Imgproc.warpAffine(image, aligned, affine, new Size(112,112), 
-                                              Imgproc.INTER_LINEAR, Core.BORDER_CONSTANT, new Scalar(128,128,128));
-                            
-                            // Quality checks for SCRFD
-                            boolean ok = QualityUtils.passesQuality(aligned, 90, 30.0, 15.0, 240.0);
-                            if (ok) {
-                                results.add(new FaceDetectionResult(aligned, det.bbox, originalWidth, originalHeight));
-                                processedCount++;
-                            } else {
-                                System.out.println("[MULTI-FACE DETECTION] SCRFD face rejected by quality check");
-                                aligned.release();
-                            }
-                        }
-                    }
-                }
-                
-                System.out.println("[MULTI-FACE DETECTION] " + processedCount + " face(s) passed quality checks");
-                if (!results.isEmpty()) {
-                    System.out.println("[MULTI-FACE DETECTION] Successfully processed " + results.size() + " face(s) with SCRFD");
-                    System.out.println("[MULTI-FACE DETECTION] ========================================\n");
-                    return results;
-                }
-            }
-        }
-
-        // Fallback to Haar Cascade
-        System.out.println("[MULTI-FACE DETECTION] Falling back to Haar Cascade detector...");
+        System.out.println("[MULTI-FACE DETECTION] Using Haar Cascade detector...");
         Mat gray = new Mat();
         Imgproc.cvtColor(image, gray, Imgproc.COLOR_BGR2GRAY);
         
