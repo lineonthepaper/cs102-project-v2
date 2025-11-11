@@ -1726,6 +1726,7 @@ body {
 
 .add-student-form {
   padding: 2rem 3rem;
+  overflow: scroll;
 }
 
 .add-student-form .form-group {
