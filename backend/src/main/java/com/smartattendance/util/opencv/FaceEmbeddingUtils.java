@@ -1,30 +1,64 @@
 package com.smartattendance.util.opencv;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-
 import org.opencv.core.Mat;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.dnn.Dnn;
 import org.opencv.dnn.Net;
+import org.opencv.imgproc.Imgproc;
 
 import com.smartattendance.exception.InvalidRequestException;
 
-import ai.djl.modality.cv.Image;
-
 public class FaceEmbeddingUtils {
+
+    private static final Size TARGET_SIZE = new Size(112, 112);
+    private static final Scalar ARC_FACE_MEAN = new Scalar(127.5, 127.5, 127.5, 0.0);
+    private static final double ARC_FACE_SCALE = 1.0 / 128.0;
+
     // Convert a single face Mat to embedding
     public static float[] faceToEmbedding(Mat face, Net net) {
         try {
-            float[] array = FeatureExtraction.predict(face);
-            return normalizeVector(array);
+            if (face == null || face.empty()) {
+                throw new InvalidRequestException("Face image is empty.");
+            }
+            if (net == null || net.empty()) {
+                throw new InvalidRequestException("Face recognition model is not loaded.");
+            }
+
+            Mat resized = new Mat();
+            if (face.size().equals(TARGET_SIZE)) {
+                face.copyTo(resized);
+            } else {
+                Imgproc.resize(face, resized, TARGET_SIZE);
+            }
+
+            Mat blob = Dnn.blobFromImage(
+                    resized,
+                    ARC_FACE_SCALE,
+                    TARGET_SIZE,
+                    ARC_FACE_MEAN,
+                    true,
+                    false,
+                    org.opencv.core.CvType.CV_32F);
+
+            Mat embedding;
+            synchronized (net) {
+                net.setInput(blob);
+                embedding = net.forward();
+            }
+
+            float[] raw = new float[(int) embedding.total()];
+            embedding.get(0, 0, raw);
+
+            blob.release();
+            embedding.release();
+            resized.release();
+
+            return normalizeVector(raw);
+        } catch (InvalidRequestException e) {
+            throw e;
         } catch (Exception e) {
-            throw new InvalidRequestException(e.getMessage());
+            throw new InvalidRequestException("Failed to compute embedding: " + e.getMessage());
         }
     }
 

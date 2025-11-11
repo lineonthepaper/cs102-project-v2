@@ -439,39 +439,32 @@ function Attendance() {
       return
     }
 
-    // 2. Handle a SUCCESSFUL match (this is your multi-mark response)
+    // 2. Handle a SUCCESSFUL match (requires confirmation)
     if (result.matched) {
-      let marked = false;
-      const status = result.recommendedStatus || 'MARKED'; // Get status from backend
-
-      // Loop through ALL students the backend marked
-      if (result.allStudents && result.allStudents.length > 0) {
-        result.allStudents.forEach(student => {
-          const studentName = `${student.firstName} ${student.lastName}`.trim();
-          showToast(`✓ ${studentName} marked as ${status}`, 'success');
-          recordSkipForStudent(student.id); // Skip all marked students
-          marked = true;
-        });
-      } else if (result.student) {
-        // Fallback for a single student response
-        const studentName = `${result.student.firstName} ${result.student.lastName}`.trim();
-        showToast(`✓ ${studentName} marked as ${status}`, 'success');
-        recordSkipForStudent(result.student.id);
-        marked = true;
+      const student = result.student;
+      if (!student || shouldSkipStudent(student.id)) {
+        return;
       }
 
-      if (marked) {
-        // Refresh the attendance list in the modal to show the new status
-        fetchStudentsAndRecords(selectedSession.id, selectedSession.section_id);
+      const candidate = {
+        student,
+        similarity: result.similarity || 0,
+        recommendedStatus: result.recommendedStatus,
+        recommendedCheckInTime: result.recommendedCheckInTime
+      };
 
-        // Clear overlay after a delay
-        setTimeout(() => {
-          clearOverlay();
-          setScannerMessage('Scanning faces...');
-        }, 2000);
+      recognizedCandidateRef.current = candidate;
+      isScanningRef.current = false;
+      setRecognizedCandidate(candidate);
+      setScannerMessage(result.message || 'Match found - please confirm');
+
+      if (result.boundingBox) {
+        drawOverlay(result.boundingBox, result.similarity || 0, student);
+      } else {
+        clearOverlay();
       }
 
-      return; // Stop here
+      return;
     }
 
     // 3. Handle "Scanning..." or "No Match" (i.e., !result.matched)
@@ -646,6 +639,70 @@ function Attendance() {
     }
     const ctx = overlayCanvasRef.current.getContext('2d')
     ctx.clearRect(0, 0, overlayCanvasRef.current.width, overlayCanvasRef.current.height)
+  }
+
+  const resetScannerForNextStudent = () => {
+    recognizedCandidateRef.current = null
+    setRecognizedCandidate(null)
+    setScannerError('')
+    setScannerMessage('Scanning faces...')
+    clearOverlay()
+    stopFrameLoop()
+    isSendingFrameRef.current = false
+    isScanningRef.current = true
+    startFrameLoop()
+  }
+
+  const handleScannerAccept = async () => {
+    if (!recognizedCandidate) {
+      return
+    }
+
+    const { student, similarity, recommendedStatus, recommendedCheckInTime } = recognizedCandidate
+    const status = recommendedStatus || 'PRESENT'
+    const checkInTime = recommendedCheckInTime || new Date().toISOString()
+
+    try {
+      setScannerMessage(`Recording attendance for ${student.firstName} ${student.lastName}...`)
+      await markAttendance(student.id, status, '', checkInTime, similarity ?? -1)
+      recordSkipForStudent(student.id)
+      showToast(`✓ ${student.firstName} ${student.lastName} marked as ${status}`, 'success')
+      setScannerMessage(`✓ ${student.firstName} ${student.lastName} marked as ${status}`)
+      isScanningRef.current = false
+      setRecognizedCandidate(null)
+      recognizedCandidateRef.current = null
+      setTimeout(() => {
+        resetScannerForNextStudent()
+      }, 1500)
+    } catch (error) {
+      console.error('Failed to record attendance:', error)
+      setScannerError('Unable to record attendance')
+      showToast('Failed to record attendance. Please try again.', 'error')
+      recordSkipForStudent(student.id)
+      isScanningRef.current = false
+      setRecognizedCandidate(null)
+      recognizedCandidateRef.current = null
+      setTimeout(() => {
+        resetScannerForNextStudent()
+      }, 2000)
+    }
+  }
+
+  const handleScannerReject = () => {
+    if (!recognizedCandidate) {
+      return
+    }
+
+    const { student } = recognizedCandidate
+    recordSkipForStudent(student.id)
+    isScanningRef.current = false
+    setRecognizedCandidate(null)
+    recognizedCandidateRef.current = null
+    setScannerMessage('Candidate rejected. Resuming scan...')
+    clearOverlay()
+    setTimeout(() => {
+      resetScannerForNextStudent()
+    }, 500)
   }
 
 
@@ -1610,6 +1667,104 @@ function Attendance() {
                 }} />
                 <canvas ref={canvasRef} style={{ display: 'none' }} />
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {recognizedCandidate && showScannerModal && (
+        <div
+          className="modal-overlay"
+          style={{ background: 'rgba(0, 0, 0, 0.7)', zIndex: 1200 }}
+          onClick={handleScannerReject}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#fff',
+              borderRadius: '14px',
+              padding: '24px',
+              maxWidth: '520px',
+              width: '90vw',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.3)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ marginTop: 0, marginBottom: '16px', fontSize: '20px' }}>
+              Confirm Attendance
+            </h2>
+
+            <div
+              style={{
+                background: '#fff',
+                border: '1px solid #ededed',
+                borderRadius: '10px',
+                padding: '16px',
+                marginBottom: '20px'
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                ID: {recognizedCandidate.student.displayId || recognizedCandidate.student.id}
+                <span
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 12,
+                    background: '#f4f4f4',
+                    padding: '2px 6px',
+                    borderRadius: 4
+                  }}
+                >
+                  {Math.round((recognizedCandidate.similarity || 0) * 100)}% match
+                </span>
+              </div>
+              <div style={{ fontSize: '1.2em', fontWeight: 700, marginBottom: 4 }}>
+                {recognizedCandidate.student.firstName} {recognizedCandidate.student.lastName}
+              </div>
+              <div style={{ fontSize: 14, color: '#555' }}>
+                {recognizedCandidate.student.email}
+              </div>
+              {recognizedCandidate.recommendedStatus && (
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
+                  Suggested status: {recognizedCandidate.recommendedStatus}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                onClick={handleScannerAccept}
+                style={{
+                  flex: 1,
+                  padding: '12px 0',
+                  fontWeight: 600,
+                  color: '#fff',
+                  background: '#000',
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: 'pointer'
+                }}
+              >
+                Accept
+              </button>
+              <button
+                onClick={handleScannerReject}
+                style={{
+                  flex: 1,
+                  padding: '12px 0',
+                  fontWeight: 600,
+                  color: '#000',
+                  background: '#fff',
+                  border: '1px solid #000',
+                  borderRadius: 6,
+                  cursor: 'pointer'
+                }}
+              >
+                Reject
+              </button>
             </div>
           </div>
         </div>
