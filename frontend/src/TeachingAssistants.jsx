@@ -596,7 +596,7 @@ function TeachingAssistants() {
                         onClick={() => removeTA(user)}
                         className="btn btn-small btn-action"
                       >
-                        Remove Teaching Assistant
+                        Remove
                       </button>
                       )}
                     </div>
