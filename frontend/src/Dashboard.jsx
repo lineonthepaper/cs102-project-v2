@@ -253,8 +253,8 @@ function Dashboard() {
                         </button>
                     </div>
                 ))}
-
-                <div className="card">
+                {userRole === "instructor" && (
+                  <div className="card">
                     <h3>Import / Export</h3>
                     <p>Import students from CSV/XLSX or export database report</p>
                     <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
@@ -274,6 +274,8 @@ function Dashboard() {
                         </button>
                     </div>
                 </div>
+                )}
+                
 
                 {/* Export Modal */}
                 {showExportModal && (
