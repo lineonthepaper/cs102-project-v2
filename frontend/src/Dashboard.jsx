@@ -35,7 +35,8 @@ function Dashboard() {
                         userId: user.user.id,
                         sectionCode: sectionFilter,
                         year: yearFilter,
-                        semester: semesterFilter
+                        semester: semesterFilter,
+                        role: userRole
                     })
                 }
             );
@@ -66,7 +67,8 @@ function Dashboard() {
                         userId: user.user.id,
                         sectionCode: sectionFilter,
                         year: yearFilter,
-                        semester: semesterFilter
+                        semester: semesterFilter,
+                        role: userRole
                     })
                 }
             );
@@ -253,7 +255,7 @@ function Dashboard() {
                         </button>
                     </div>
                 ))}
-                {userRole === "instructor" && (
+                {(userRole === "instructor" || userRole === "teaching assistant") && (
                   <div className="card">
                     <h3>Import / Export</h3>
                     <p>Import students from CSV/XLSX or export database report</p>
