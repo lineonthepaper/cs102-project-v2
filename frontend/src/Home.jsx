@@ -243,17 +243,6 @@ function Home() {
                     </div>
                 )}
 
-
-                <div className="card">
-                    <h3>Mark Attendance</h3>
-                    <p>Create sessions, mark student attendance, and manage records</p>
-                    <button
-                        onClick={() => navigate("/attendance/all")}
-                        className="btn btn-secondary"
-                    >
-                        Mark Attendance
-                    </button>
-                </div>
                 {canExport && (
                     <div className="card">
                         <h3>Export Reports</h3>
