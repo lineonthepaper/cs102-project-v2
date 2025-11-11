@@ -3,13 +3,18 @@ package com.smartattendance.service;
 import com.smartattendance.dto.request.user.CreateStudentRequest;
 import com.smartattendance.dto.request.user.UpdateEnrollmentRequest;
 import com.smartattendance.dto.request.user.UpdateStudentRequest;
+import com.smartattendance.dto.response.face.FaceImageProcessingResultDTO;
+import com.smartattendance.dto.response.face.FaceProcessingSummaryDTO;
 import com.smartattendance.dto.response.user.*;
+import com.smartattendance.dto.response.user.StudentFaceProcessingResult;
 import com.smartattendance.entity.*;
 import com.smartattendance.exception.DuplicateEmailException;
 import com.smartattendance.exception.ResourceNotFoundException;
+import com.smartattendance.exception.InvalidRequestException;
 import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.*;
 import com.smartattendance.util.converter.ImageConverter;
+import com.smartattendance.util.opencv.FaceExtractionError;
 import java.time.OffsetDateTime;
 import com.smartattendance.util.helper.ServiceUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -121,44 +126,100 @@ public class StudentService {
     }
 
     @Transactional
-    public StudentDTO createStudent(CreateStudentRequest request) {
+    public StudentFaceProcessingResult createStudent(CreateStudentRequest request) {
         logger.info("createStudent called - Name: {} {}, Email received: {}",
                 request.getFirstName(), request.getLastName(), request.getEmail());
 
         logger.info("Creating new student with email: {}", request.getEmail());
 
-        // Check if student already exists
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
             logger.warn("Attempted to create student with duplicate email: {}", request.getEmail());
             throw new DuplicateEmailException("A student with email " + request.getEmail() + " already exists");
         }
 
         try {
-            List<String> faceImages = Optional.ofNullable(request.getFaceImages())
-                    .map(images -> images.stream()
-                            .map(ImageConverter::base64ToBytes)
-                            .map(ImageConverter::bytesToBase64)
-                            .collect(Collectors.toList()))
+            List<String> incomingFaceImages = Optional.ofNullable(request.getFaceImages())
                     .orElse(Collections.emptyList());
 
-            if (faceImages.size() > 8) {
+            if (incomingFaceImages.size() > 8) {
                 throw new IllegalArgumentException("Face images cannot exceed 8 entries");
             }
 
-            String faceImagesJson = serializeFaceImages(faceImages);
-
-            // Build face profiles (embeddings) from provided images
+            List<FaceImageProcessingResultDTO> processingResults = new ArrayList<>();
+            List<String> acceptedFaceImages = new ArrayList<>();
             List<FaceProfile> profiles = new ArrayList<>();
-            for (String b64 : faceImages) {
-                byte[] bytes = ImageConverter.base64ToBytes(b64);
-                faceRecognitionService.computeEmbedding(bytes).ifPresent(emb -> {
-                    profiles.add(new FaceProfile(emb, OffsetDateTime.now()));
-                });
+
+            int index = 0;
+            for (String faceImage : incomingFaceImages) {
+                if (faceImage == null || faceImage.isBlank()) {
+                    processingResults.add(FaceImageProcessingResultDTO.rejected(
+                            index,
+                            FaceExtractionError.IMAGE_DECODE_FAILED,
+                            "Image data is empty."));
+                    index++;
+                    continue;
+                }
+
+                byte[] imageBytes;
+                try {
+                    imageBytes = ImageConverter.base64ToBytes(faceImage);
+                } catch (IllegalArgumentException ex) {
+                    logger.warn("Invalid base64 image data for student {} {} (index {})",
+                            request.getFirstName(), request.getLastName(), index);
+                    processingResults.add(FaceImageProcessingResultDTO.rejected(
+                            index,
+                            FaceExtractionError.IMAGE_DECODE_FAILED,
+                            "Invalid base64 image data."));
+                    index++;
+                    continue;
+                }
+
+                FaceRecognitionService.FaceEmbeddingResult embeddingResult =
+                        faceRecognitionService.computeEmbeddingDetailed(imageBytes);
+
+                if (embeddingResult.isSuccess()) {
+                    String normalized = ImageConverter.bytesToBase64(imageBytes);
+                    acceptedFaceImages.add(normalized);
+                    profiles.add(new FaceProfile(embeddingResult.getEmbedding(), OffsetDateTime.now()));
+                    processingResults.add(FaceImageProcessingResultDTO.accepted(
+                            index,
+                            "Face image accepted."));
+                } else {
+                    FaceExtractionError errorCode = embeddingResult.getExtractionOutcome() != null
+                            ? embeddingResult.getExtractionOutcome().getError()
+                            : null;
+                    String message = embeddingResult.getMessage() != null
+                            ? embeddingResult.getMessage()
+                            : "Face extraction failed.";
+                    processingResults.add(FaceImageProcessingResultDTO.rejected(
+                            index,
+                            errorCode,
+                            message));
+                }
+
+                index++;
             }
 
+            FaceProcessingSummaryDTO faceProcessingSummary = FaceProcessingSummaryDTO.from(
+                    incomingFaceImages.size(),
+                    acceptedFaceImages.size(),
+                    processingResults);
+
+            if (faceProcessingSummary.hasFailures()) {
+                logger.warn("Face processing completed with {} rejected image(s) for student {} {}",
+                        faceProcessingSummary.getRejectedCount(),
+                        request.getFirstName(),
+                        request.getLastName());
+            }
+
+            if (!incomingFaceImages.isEmpty() && acceptedFaceImages.isEmpty()) {
+                throw new InvalidRequestException(
+                        "All provided face images were rejected. Please upload clearer photos.");
+            }
+
+            String faceImagesJson = serializeFaceImages(acceptedFaceImages);
             String faceProfilesJson = objectMapper.writeValueAsString(profiles);
 
-            // Use native SQL to insert student so database trigger can generate the ID
             String sql = "INSERT INTO users (email, first_name, last_name, face_images, face_profiles, is_student, is_instructor, is_ta, enabled, created_at) "
                     +
                     "VALUES (:email, :firstName, :lastName, CAST(:faceImages AS jsonb), CAST(:faceProfiles AS jsonb), true, false, false, true, CURRENT_TIMESTAMP) "
@@ -175,16 +236,18 @@ public class StudentService {
 
             logger.debug("Student created with ID: {}", generatedId);
 
-            // Fetch the newly created student
             User savedStudent = userRepository.findById(generatedId)
                     .orElseThrow(() -> new ResourceNotFoundException("Student", generatedId));
 
             StudentDTO dto = mapToStudentDTO(savedStudent, Collections.emptyList(), Collections.emptyList());
-            dto.setFaceImages(new ArrayList<>(faceImages));
+            dto.setFaceImages(new ArrayList<>(acceptedFaceImages));
 
             logger.info("Successfully created student: {} {} ({})", request.getFirstName(), request.getLastName(),
                     generatedId);
-            return dto;
+
+            return new StudentFaceProcessingResult(dto, faceProcessingSummary);
+        } catch (InvalidRequestException e) {
+            throw e;
         } catch (Exception e) {
             logger.error("Failed to create student: {}", request.getEmail(), e);
             throw new RuntimeException("Failed to create student", e);
@@ -241,7 +304,7 @@ public class StudentService {
     }
 
     @Transactional
-    public StudentDTO updateStudent(String studentId, UpdateStudentRequest request) {
+    public StudentFaceProcessingResult updateStudent(String studentId, UpdateStudentRequest request) {
         logger.info("Updating student: {}", studentId);
 
         User student = userRepository.findById(studentId)
@@ -260,6 +323,8 @@ public class StudentService {
         student.setFirstName(request.getFirstName());
         student.setLastName(request.getLastName());
 
+        FaceProcessingSummaryDTO faceProcessingSummary = null;
+
         // Update face images if provided (including empty list to clear images)
         // Persist basic field changes before handling face images (native updates bypass JPA tracking)
         entityManager.flush();
@@ -267,36 +332,86 @@ public class StudentService {
         if (request.getFaceImages() != null) {
             logger.info("Updating face images for student {}: {} images", studentId, request.getFaceImages().size());
             try {
-                List<String> faceImages = new ArrayList<>();
-
-                // Only process if not empty
-                if (!request.getFaceImages().isEmpty()) {
-                    faceImages = request.getFaceImages().stream()
-                            .map(ImageConverter::base64ToBytes)
-                            .map(ImageConverter::bytesToBase64)
-                            .collect(Collectors.toList());
-
-                    if (faceImages.size() > 8) {
-                        throw new IllegalArgumentException("Face images cannot exceed 8 entries");
-                    }
+                List<String> incomingFaceImages = request.getFaceImages();
+                if (incomingFaceImages.size() > 8) {
+                    throw new IllegalArgumentException("Face images cannot exceed 8 entries");
                 }
 
-                String faceImagesJson = serializeFaceImages(faceImages);
-                logger.info("Serialized face images JSON: {}", faceImagesJson);
-
-                // Build face profiles (embeddings) from provided images
+                List<FaceImageProcessingResultDTO> processingResults = new ArrayList<>();
+                List<String> acceptedFaceImages = new ArrayList<>();
                 List<FaceProfile> profiles = new ArrayList<>();
-                for (String b64 : faceImages) {
-                    byte[] bytes = ImageConverter.base64ToBytes(b64);
-                    faceRecognitionService.computeEmbedding(bytes).ifPresent(emb -> {
-                        profiles.add(new FaceProfile(emb, OffsetDateTime.now()));
-                    });
+
+                int index = 0;
+                for (String faceImage : incomingFaceImages) {
+                    if (faceImage == null || faceImage.isBlank()) {
+                        processingResults.add(FaceImageProcessingResultDTO.rejected(
+                                index,
+                                FaceExtractionError.IMAGE_DECODE_FAILED,
+                                "Image data is empty."));
+                        index++;
+                        continue;
+                    }
+
+                    byte[] imageBytes;
+                    try {
+                        imageBytes = ImageConverter.base64ToBytes(faceImage);
+                    } catch (IllegalArgumentException ex) {
+                        logger.warn("Invalid base64 image data for student {} (index {})", studentId, index);
+                        processingResults.add(FaceImageProcessingResultDTO.rejected(
+                                index,
+                                FaceExtractionError.IMAGE_DECODE_FAILED,
+                                "Invalid base64 image data."));
+                        index++;
+                        continue;
+                    }
+
+                    FaceRecognitionService.FaceEmbeddingResult embeddingResult =
+                            faceRecognitionService.computeEmbeddingDetailed(imageBytes);
+
+                    if (embeddingResult.isSuccess()) {
+                        String normalized = ImageConverter.bytesToBase64(imageBytes);
+                        acceptedFaceImages.add(normalized);
+                        profiles.add(new FaceProfile(embeddingResult.getEmbedding(), OffsetDateTime.now()));
+                        processingResults.add(FaceImageProcessingResultDTO.accepted(
+                                index,
+                                "Face image accepted."));
+                    } else {
+                        FaceExtractionError errorCode = embeddingResult.getExtractionOutcome() != null
+                                ? embeddingResult.getExtractionOutcome().getError()
+                                : null;
+                        String message = embeddingResult.getMessage() != null
+                                ? embeddingResult.getMessage()
+                                : "Face extraction failed.";
+                        processingResults.add(FaceImageProcessingResultDTO.rejected(
+                                index,
+                                errorCode,
+                                message));
+                    }
+
+                    index++;
                 }
+
+                faceProcessingSummary = FaceProcessingSummaryDTO.from(
+                        incomingFaceImages.size(),
+                        acceptedFaceImages.size(),
+                        processingResults);
+
+                if (faceProcessingSummary.hasFailures()) {
+                    logger.warn("Face processing completed with {} rejected image(s) for student {}",
+                            faceProcessingSummary.getRejectedCount(), studentId);
+                }
+
+                if (!incomingFaceImages.isEmpty() && acceptedFaceImages.isEmpty()) {
+                    throw new InvalidRequestException(
+                            "All provided face images were rejected. Please upload clearer photos.");
+                }
+
+                String faceImagesJson = serializeFaceImages(acceptedFaceImages);
+                logger.info("Serialized face images JSON: {}", faceImagesJson);
 
                 String faceProfilesJson = objectMapper.writeValueAsString(profiles);
                 logger.info("Serialized face profiles JSON: {}", faceProfilesJson);
 
-                // Use native SQL to update face images and profiles
                 String sql = "UPDATE users SET face_images = CAST(:faceImages AS jsonb), face_profiles = CAST(:faceProfiles AS jsonb) WHERE id = :id";
                 entityManager.createNativeQuery(sql)
                         .setParameter("faceImages", faceImagesJson)
@@ -304,7 +419,10 @@ public class StudentService {
                         .setParameter("id", studentId)
                         .executeUpdate();
 
-                logger.info("Face images and profiles updated for student: {} ({} images, {} profiles)", studentId, faceImages.size(), profiles.size());
+                logger.info("Face images and profiles updated for student: {} ({} images, {} profiles)",
+                        studentId, acceptedFaceImages.size(), profiles.size());
+            } catch (InvalidRequestException e) {
+                throw e;
             } catch (Exception e) {
                 logger.error("Failed to update face images for student: {}", studentId, e);
                 throw new RuntimeException("Failed to update face images", e);
@@ -315,8 +433,8 @@ public class StudentService {
         entityManager.refresh(student);
         logger.info("Student updated successfully: {}", studentId);
 
-        // Return updated student without full attendance records for performance
-        return mapToStudentSummaryDTO(student, Collections.emptyList());
+        StudentDTO dto = mapToStudentSummaryDTO(student, Collections.emptyList());
+        return new StudentFaceProcessingResult(dto, faceProcessingSummary);
     }
 
     @Transactional

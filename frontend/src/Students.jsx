@@ -29,6 +29,7 @@ function Students() {
   const [expandedCourses, setExpandedCourses] = useState({})
   const [faceImages, setFaceImages] = useState([])
   const [editFaceImages, setEditFaceImages] = useState([])
+  const [faceProcessingSummary, setFaceProcessingSummary] = useState(null)
   const [loadingStudentDetails, setLoadingStudentDetails] = useState(false)
   const fileInputRef = useRef(null)
   const editFileInputRef = useRef(null)
@@ -475,6 +476,65 @@ function Students() {
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
+  }
+
+  const closeFaceProcessingSummary = () => {
+    setFaceProcessingSummary(null)
+  }
+
+  const formatExtractionError = (code) => {
+    if (!code) return 'Unknown error'
+    const friendly = {
+      IMAGE_DECODE_FAILED: 'Image could not be read',
+      NO_FACE_DETECTED: 'No face detected',
+      MULTIPLE_FACES_DETECTED: 'Multiple faces detected',
+      FACE_QUALITY_REJECTED: 'Face failed quality checks',
+      MODEL_ERROR: 'Model error',
+      UNKNOWN_ERROR: 'Unknown error'
+    }
+    if (friendly[code]) {
+      return friendly[code]
+    }
+    return code
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  }
+
+  const formatRejectionNotes = (item) => {
+    if (!item || !item.message) {
+      return '—'
+    }
+
+    if (item.errorCode) {
+      const reason = formatExtractionError(item.errorCode)
+      const message = item.message.trim()
+      if (message.toLowerCase().startsWith(reason.toLowerCase())) {
+        const remainder = message.slice(reason.length).trim()
+        const cleaned = remainder
+          .replace(/^[\s:–-]+/, '')
+          .replace(/^(\.)\s*/, '')
+          .replace(/^\((.*)\)\.?$/, '$1')
+          .trim()
+        if (!cleaned) {
+          return '—'
+        }
+        if (cleaned.length >= 2) {
+          return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+        }
+        return cleaned.toUpperCase()
+      }
+    }
+
+    const normalized = item.message.trim()
+    if (!normalized) {
+      return '—'
+    }
+    if (normalized.length >= 2) {
+      return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+    }
+    return normalized.toUpperCase()
   }
 
   const openAddStudentModal = () => {
@@ -1248,10 +1308,23 @@ function Students() {
                     throw new Error(result.message || 'Failed to add student')
                   }
 
-                  // Refresh students list
                   await fetchStudents()
+
+                  const summary = result.faceProcessingSummary
+                  if (summary && summary.rejectedCount > 0) {
+                    const student = result.student || {}
+                    const studentName = [student.firstName, student.lastName].filter(Boolean).join(' ')
+                    setFaceProcessingSummary({
+                      ...summary,
+                      context: 'create',
+                      message: result.message,
+                      studentName
+                    })
+                  } else {
+                    alert(result.message || 'Student added successfully!')
+                  }
+
                   closeAddStudentModal()
-                  alert(result.message || 'Student added successfully!')
                 } catch (error) {
                   console.error('Error adding student:', error)
                   alert(error.message || 'Failed to add student')
@@ -1389,10 +1462,23 @@ function Students() {
                     throw new Error(result.message || 'Failed to update student')
                   }
 
-                  // Refresh students list
                   await fetchStudents()
+
+                  const summary = result.faceProcessingSummary
+                  if (summary && summary.rejectedCount > 0) {
+                    const studentData = result.student || {}
+                    const studentName = [studentData.firstName, studentData.lastName].filter(Boolean).join(' ')
+                    setFaceProcessingSummary({
+                      ...summary,
+                      context: 'update',
+                      message: result.message,
+                      studentName
+                    })
+                  } else {
+                    alert(result.message || 'Student updated successfully!')
+                  }
+
                   closeEditStudentModal()
-                  alert(result.message || 'Student updated successfully!')
                 } catch (error) {
                   console.error('Error updating student:', error)
                   alert(error.message || 'Failed to update student')
@@ -1492,6 +1578,144 @@ function Students() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {faceProcessingSummary && (
+        <div className="modal-overlay" onClick={closeFaceProcessingSummary}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Face Image Processing Report</h2>
+              <button onClick={closeFaceProcessingSummary} className="close-button">
+                ✕
+              </button>
+            </div>
+
+            <div
+              className="modal-body"
+              style={{
+                backgroundColor: '#fff',
+                color: '#111',
+                borderTop: '1px solid #e5e7eb',
+                borderBottom: '1px solid #e5e7eb',
+                padding: '1.5rem'
+              }}
+            >
+              <p style={{ marginBottom: '1rem' }}>
+                {faceProcessingSummary.message || 'Face image processing completed.'}
+              </p>
+
+              <div style={{ marginBottom: '1.25rem', fontWeight: 500 }}>
+                Accepted {faceProcessingSummary.acceptedCount} of {faceProcessingSummary.totalUploaded} uploaded image(s).
+              </div>
+
+              {faceProcessingSummary.studentName && (
+                <div style={{ marginBottom: '1.25rem' }}>
+                  Student: <strong>{faceProcessingSummary.studentName}</strong>
+                </div>
+              )}
+
+              {Array.isArray(faceProcessingSummary.results) && faceProcessingSummary.results.length > 0 && (
+                <div>
+                  <table
+                    style={{
+                      width: '100%',
+                      borderCollapse: 'separate',
+                      borderSpacing: 0,
+                      marginBottom: '1.25rem',
+                      fontSize: '0.95rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.5rem',
+                      overflow: 'hidden',
+                      backgroundColor: '#fff'
+                    }}
+                  >
+                    <thead>
+                      <tr>
+                        <th
+                          style={{
+                            textAlign: 'left',
+                            borderBottom: '1px solid #d1d5db',
+                            padding: '0.65rem 0.85rem',
+                            backgroundColor: '#f9fafb',
+                            fontWeight: 600,
+                            color: '#111'
+                          }}
+                        >
+                          Image
+                        </th>
+                        <th
+                          style={{
+                            textAlign: 'left',
+                            borderBottom: '1px solid #d1d5db',
+                            padding: '0.65rem 0.85rem',
+                            backgroundColor: '#f9fafb',
+                            fontWeight: 600,
+                            color: '#111'
+                          }}
+                        >
+                          Status
+                        </th>
+                        <th
+                          style={{
+                            textAlign: 'left',
+                            borderBottom: '1px solid #d1d5db',
+                            padding: '0.65rem 0.85rem',
+                            backgroundColor: '#f9fafb',
+                            fontWeight: 600,
+                            color: '#111'
+                          }}
+                        >
+                          Reason
+                        </th>
+                        <th
+                          style={{
+                            textAlign: 'left',
+                            borderBottom: '1px solid #d1d5db',
+                            padding: '0.65rem 0.85rem',
+                            backgroundColor: '#f9fafb',
+                            fontWeight: 600,
+                            color: '#111'
+                          }}
+                        >
+                          Notes
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {faceProcessingSummary.results.map((item) => (
+                        <tr key={item.index} style={{ backgroundColor: item.accepted ? '#fff' : '#f9fafb' }}>
+                          <td style={{ padding: '0.75rem 0.85rem', borderBottom: '1px solid #f3f4f6' }}>
+                            Image #{item.index + 1}
+                          </td>
+                          <td style={{ padding: '0.75rem 0.85rem', borderBottom: '1px solid #f3f4f6', fontWeight: 600 }}>
+                            {item.accepted ? 'Accepted' : 'Rejected'}
+                          </td>
+                          <td style={{ padding: '0.75rem 0.85rem', borderBottom: '1px solid #f3f4f6' }}>
+                            {!item.accepted && item.errorCode ? formatExtractionError(item.errorCode) : '—'}
+                          </td>
+                          <td style={{ padding: '0.75rem 0.85rem', borderBottom: '1px solid #f3f4f6' }}>
+                            {!item.accepted ? formatRejectionNotes(item) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-actions" style={{ justifyContent: 'center', padding: '1rem 0' }}>
+              <button
+                type="button"
+                onClick={closeFaceProcessingSummary}
+                className="btn btn-secondary"
+                style={{ minWidth: '140px' }}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

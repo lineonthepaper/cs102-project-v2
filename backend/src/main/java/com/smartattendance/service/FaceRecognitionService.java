@@ -11,17 +11,23 @@ import org.opencv.core.Mat;
 import org.opencv.dnn.Dnn;
 import org.opencv.dnn.Net;
 import org.opencv.objdetect.CascadeClassifier;
-import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
 import com.smartattendance.entity.ComparisonResult;
 import com.smartattendance.util.helper.ResourcePathUtils;
+import com.smartattendance.util.opencv.FaceDetectionResult;
 import com.smartattendance.util.opencv.FaceDetectionUtils;
 import com.smartattendance.util.opencv.FaceEmbeddingUtils;
+import com.smartattendance.util.opencv.FaceExtractionOutcome;
 import com.smartattendance.util.opencv.FaceRecognitionUtils;
 
 @Service
 public class FaceRecognitionService {
+
+    private static final Logger logger = LoggerFactory.getLogger(FaceRecognitionService.class);
 
     @Value("${face.similarityThreshold:0.88}")
     private double similarityThreshold;
@@ -57,18 +63,18 @@ public class FaceRecognitionService {
         ensureModelsLoaded();
 
         if (knownEmbeddings == null || knownEmbeddings.isEmpty()) {
-            System.out.println("[RECOGNITION] No known embeddings provided");
+            logger.warn("[RECOGNITION] No known embeddings provided");
             return Optional.empty();
         }
 
-        Optional<float[]> embeddingOptional = computeEmbedding(imageBytes);
-        if (embeddingOptional.isEmpty()) {
-            System.out.println("[RECOGNITION] Failed to compute embedding from image");
+        FaceEmbeddingResult embeddingResult = computeEmbeddingDetailed(imageBytes);
+        if (!embeddingResult.isSuccess()) {
+            logger.warn("[RECOGNITION] {}", embeddingResult.getMessage());
             return Optional.empty();
         }
 
-        float[] liveEmbedding = embeddingOptional.get();
-        System.out.println("[RECOGNITION] Embedding computed: " + liveEmbedding.length + " dimensions");
+        float[] liveEmbedding = embeddingResult.getEmbedding();
+        logger.debug("[RECOGNITION] Embedding computed: {} dimensions", liveEmbedding.length);
 
         ComparisonResult result = FaceRecognitionUtils.findBestMatch(
                 liveEmbedding,
@@ -92,13 +98,13 @@ public class FaceRecognitionService {
             return Optional.empty();
         }
         
-        Optional<float[]> embeddingOptional = computeEmbedding(imageBytes);
-        if (embeddingOptional.isEmpty()) {
+        FaceEmbeddingResult embeddingResult = computeEmbeddingDetailed(imageBytes);
+        if (!embeddingResult.isSuccess()) {
             return Optional.empty();
         }
         
-        float[] liveEmbedding = embeddingOptional.get();
-        System.out.println("[RECOGNITION] Embedding computed: " + liveEmbedding.length + " dimensions");
+        float[] liveEmbedding = embeddingResult.getEmbedding();
+        logger.debug("[RECOGNITION] Embedding computed: {} dimensions", liveEmbedding.length);
         
         ComparisonResult best = FaceRecognitionUtils.findTopCandidate(liveEmbedding, knownEmbeddings);
         return Optional.ofNullable(best);
@@ -111,7 +117,7 @@ public class FaceRecognitionService {
 
         synchronized (modelLock) {
             if (recognitionNet == null) {
-                System.out.println("[INFO] Loading ArcFace ResNet100 model...");
+                logger.info("[INFO] Loading ArcFace ResNet100 model...");
                 String modelPath = resourceUtils.getResourceFilePath("models/facenet.onnx");
                 
                 // Check if resource loading failed
@@ -149,7 +155,7 @@ public class FaceRecognitionService {
                     if (recognitionNet.empty()) {
                         throw new IllegalStateException("Failed to load ArcFace model - file may be corrupted");
                     }
-                    System.out.println("[INFO] ArcFace model loaded successfully!");
+                    logger.info("[INFO] ArcFace model loaded successfully!");
                 } catch (org.opencv.core.CvException e) {
                     String errorMessage = "\n" +
                         "═══════════════════════════════════════════════════════════════\n" +
@@ -172,7 +178,7 @@ public class FaceRecognitionService {
                 }
             }
             if (faceDetector == null || faceDetector.empty()) {
-                System.out.println("[INFO] Loading Haar Cascade face detector...");
+                logger.info("[INFO] Loading Haar Cascade face detector...");
                 String detectorPath = resourceUtils.getResourceFilePath("models/haarcascade_frontalface_alt.xml");
                 faceDetector = new CascadeClassifier(detectorPath);
                 if (faceDetector.empty()) {
@@ -180,49 +186,64 @@ public class FaceRecognitionService {
                         "Failed to load Haar Cascade face detector. " +
                         "File should be at: backend/src/main/resources/models/haarcascade_frontalface_alt.xml");
                 }
-                System.out.println("[INFO] Face detector loaded successfully!");
+                logger.info("[INFO] Face detector loaded successfully!");
             }
         }
     }
 
-    public Optional<float[]> computeEmbedding(byte[] imageBytes) {
+    public FaceEmbeddingResult computeEmbeddingDetailed(byte[] imageBytes) {
         ensureModelsLoaded();
 
-        Mat detectedFace = FaceDetectionUtils.getFaceFromImageBytes(imageBytes, faceDetector);
-        if (detectedFace == null) {
-            System.out.println("[EMBEDDING] Face detection failed - cannot compute embedding");
-            return Optional.empty();
+        FaceExtractionOutcome extraction = FaceDetectionUtils.getFaceFromImageBytesWithBbox(imageBytes, faceDetector);
+        if (!extraction.isSuccess()) {
+            String message = extraction.getMessage() != null ? extraction.getMessage() : "Face detection failed.";
+            logger.warn("[EMBEDDING] {}", message);
+            return FaceEmbeddingResult.failure(extraction, message);
         }
 
+        FaceDetectionResult detection = extraction.getDetectionResultOrNull();
+        if (detection == null || detection.getFaceMat() == null) {
+            String message = "Face detection produced no usable face region.";
+            logger.error("[EMBEDDING] {}", message);
+            return FaceEmbeddingResult.failure(extraction, message);
+        }
+
+        Mat faceMat = detection.getFaceMat();
         try {
-            System.out.println("[EMBEDDING] Computing embedding from 112x112 face region...");
-            float[] embedding = FaceEmbeddingUtils.faceToEmbedding(detectedFace, recognitionNet);
-            System.out.println("[EMBEDDING] Successfully computed " + embedding.length + "-dimensional embedding");
-            return Optional.of(embedding);
+            logger.debug("[EMBEDDING] Computing embedding from 112x112 face region...");
+            float[] embedding = FaceEmbeddingUtils.faceToEmbedding(faceMat, recognitionNet);
+            logger.info("[EMBEDDING] Successfully computed {}-dimensional embedding", embedding.length);
+            return FaceEmbeddingResult.success(embedding, extraction);
+        } catch (Exception ex) {
+            String message = "Failed to compute embedding: " + (ex.getMessage() != null ? ex.getMessage() : "unknown error");
+            logger.error("[EMBEDDING] {}", message, ex);
+            return FaceEmbeddingResult.failure(extraction, message);
         } finally {
-            detectedFace.release();
+            faceMat.release();
         }
     }
 
-    public Optional<EmbeddingWithBbox> computeEmbeddingWithBbox(byte[] imageBytes) {
-        ensureModelsLoaded();
+    public Optional<float[]> computeEmbedding(byte[] imageBytes) {
+        FaceEmbeddingResult result = computeEmbeddingDetailed(imageBytes);
+        return result.isSuccess() ? Optional.of(result.getEmbedding()) : Optional.empty();
+    }
 
-        com.smartattendance.util.opencv.FaceDetectionResult result = 
-            com.smartattendance.util.opencv.FaceDetectionUtils.getFaceFromImageBytesWithBbox(imageBytes, faceDetector);
-        if (result == null) {
-            System.out.println("[EMBEDDING] Face detection failed - cannot compute embedding");
+    public Optional<EmbeddingWithBbox> computeEmbeddingWithBbox(byte[] imageBytes) {
+        FaceEmbeddingResult result = computeEmbeddingDetailed(imageBytes);
+        if (!result.isSuccess()) {
             return Optional.empty();
         }
 
-        try {
-            System.out.println("[EMBEDDING] Computing embedding from 112x112 face region...");
-            float[] embedding = FaceEmbeddingUtils.faceToEmbedding(result.getFaceMat(), recognitionNet);
-            System.out.println("[EMBEDDING] Successfully computed " + embedding.length + "-dimensional embedding");
-            return Optional.of(new EmbeddingWithBbox(embedding, result.getBoundingBox(), 
-                                                     result.getOriginalWidth(), result.getOriginalHeight()));
-        } finally {
-            result.getFaceMat().release();
+        if (result.getBoundingBox() == null) {
+            logger.warn("[EMBEDDING] Missing bounding box information for extracted face");
+            return Optional.empty();
         }
+
+        return Optional.of(new EmbeddingWithBbox(
+                result.getEmbedding(),
+                result.getBoundingBox(),
+                result.getOriginalWidth(),
+                result.getOriginalHeight()));
     }
 
     /**
@@ -233,29 +254,79 @@ public class FaceRecognitionService {
         ensureModelsLoaded();
 
         List<EmbeddingWithBbox> results = new java.util.ArrayList<>();
-        
-        List<com.smartattendance.util.opencv.FaceDetectionResult> detections = 
-            com.smartattendance.util.opencv.FaceDetectionUtils.getAllFacesWithBbox(imageBytes, faceDetector);
-        
+
+        List<FaceDetectionResult> detections =
+                FaceDetectionUtils.getAllFacesWithBbox(imageBytes, faceDetector);
+
         if (detections == null || detections.isEmpty()) {
-            System.out.println("[MULTI-EMBEDDING] No faces detected - cannot compute embeddings");
+            logger.warn("[MULTI-EMBEDDING] No faces detected - cannot compute embeddings");
             return results;
         }
 
-        System.out.println("[MULTI-EMBEDDING] Computing embeddings for " + detections.size() + " detected face(s)...");
-        
-        for (com.smartattendance.util.opencv.FaceDetectionResult detection : detections) {
+        logger.info("[MULTI-EMBEDDING] Computing embeddings for {} detected face(s)...", detections.size());
+
+        for (FaceDetectionResult detection : detections) {
+            Mat faceMat = detection.getFaceMat();
             try {
-                float[] embedding = FaceEmbeddingUtils.faceToEmbedding(detection.getFaceMat(), recognitionNet);
-                results.add(new EmbeddingWithBbox(embedding, detection.getBoundingBox(), 
-                                                 detection.getOriginalWidth(), detection.getOriginalHeight()));
+                float[] embedding = FaceEmbeddingUtils.faceToEmbedding(faceMat, recognitionNet);
+                results.add(new EmbeddingWithBbox(
+                        embedding,
+                        detection.getBoundingBox(),
+                        detection.getOriginalWidth(),
+                        detection.getOriginalHeight()));
+            } catch (Exception ex) {
+                logger.error("[MULTI-EMBEDDING] Failed to compute embedding for detected face", ex);
             } finally {
-                detection.getFaceMat().release();
+                faceMat.release();
             }
         }
-        
-        System.out.println("[MULTI-EMBEDDING] Successfully computed " + results.size() + " embeddings");
+
+        logger.info("[MULTI-EMBEDDING] Successfully computed {} embedding(s)", results.size());
         return results;
+    }
+
+    @Getter
+    public static class FaceEmbeddingResult {
+        private final boolean success;
+        private final float[] embedding;
+        private final FaceExtractionOutcome extractionOutcome;
+        private final String message;
+        private final org.opencv.core.Rect boundingBox;
+        private final int originalWidth;
+        private final int originalHeight;
+
+        private FaceEmbeddingResult(boolean success,
+                                    float[] embedding,
+                                    FaceExtractionOutcome extractionOutcome,
+                                    String message,
+                                    org.opencv.core.Rect boundingBox,
+                                    int originalWidth,
+                                    int originalHeight) {
+            this.success = success;
+            this.embedding = embedding;
+            this.extractionOutcome = extractionOutcome;
+            this.message = message;
+            this.boundingBox = boundingBox;
+            this.originalWidth = originalWidth;
+            this.originalHeight = originalHeight;
+        }
+
+        public static FaceEmbeddingResult success(float[] embedding, FaceExtractionOutcome outcome) {
+            FaceDetectionResult detection = outcome != null ? outcome.getDetectionResultOrNull() : null;
+            org.opencv.core.Rect bbox = detection != null ? detection.getBoundingBox() : null;
+            int width = detection != null ? detection.getOriginalWidth() : 0;
+            int height = detection != null ? detection.getOriginalHeight() : 0;
+            return new FaceEmbeddingResult(true, embedding, outcome,
+                    "Embedding computed successfully", bbox, width, height);
+        }
+
+        public static FaceEmbeddingResult failure(FaceExtractionOutcome outcome, String message) {
+            return new FaceEmbeddingResult(false, null, outcome, message, null, 0, 0);
+        }
+
+        public static FaceEmbeddingResult failure(String message) {
+            return failure(null, message);
+        }
     }
 
     public static class EmbeddingWithBbox {
