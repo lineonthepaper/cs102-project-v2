@@ -1,7 +1,7 @@
 package com.smartattendance.service.strategy;
 
 import com.smartattendance.entity.AttendanceRecord;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 /**
  * Strategy interface for marking attendance.
@@ -23,7 +23,7 @@ public interface AttendanceMarkingStrategy {
      * @param record the attendance record to mark
      * @param checkinTime the time of check-in
      */
-    void mark(AttendanceRecord record, LocalDateTime checkinTime);
+    void mark(AttendanceRecord record, OffsetDateTime checkinTime);
     
     /**
      * Get the status name this strategy handles.

@@ -88,7 +88,7 @@ function Students() {
       if (sectionFilter !== 'all') {
         url += `&sectionId=${sectionFilter}`
       }
-      
+
       const response = await fetch(url)
       if (!response.ok) {
         throw new Error('Failed to fetch students')
@@ -300,7 +300,8 @@ function Students() {
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'Asia/Singapore'
     })
   }
 
@@ -311,7 +312,9 @@ function Students() {
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false
+      second: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Singapore'
     })
   }
 
@@ -338,7 +341,7 @@ function Students() {
     // Punctuality should only consider attended sessions (PRESENT + LATE), not absent sessions
     // Formula: (on-time sessions) / (attended sessions) * 100
     // If no present sessions, punctuality is not applicable (show 0% or recalculate to override backend bug)
-    const punctualityRate = presentSessions > 0 
+    const punctualityRate = presentSessions > 0
       ? (selectedStudent.punctualityRate ?? Math.round(((presentSessions - lateSessions) / presentSessions) * 100))
       : 0 // Always 0 when no present sessions, regardless of backend value
 
@@ -390,14 +393,14 @@ function Students() {
     // Fetch full student data for the modal
     setLoadingStudentDetails(true)
     setShowModal(true)
-    
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/students/${student.id}`)
       if (!response.ok) {
         throw new Error('Failed to fetch student details')
       }
       const studentData = await response.json()
-      
+
       // Transform the data
       const transformedStudent = {
         ...studentData,
@@ -455,7 +458,7 @@ function Students() {
           } : null
         }))
       }
-      
+
       setSelectedStudent(transformedStudent)
     } catch (error) {
       console.error('Error fetching student details:', error)
@@ -557,7 +560,7 @@ function Students() {
       name: `Face ${index + 1}`,
       isExisting: true
     }))
-    
+
     setEditFaceImages(formattedImages)
     setEditStudent(student)
     setShowEditStudentModal(true)
@@ -737,12 +740,12 @@ function Students() {
       // Build initial selections from fetched enrollments
       const initialSelections = {}
       const expanded = {}
-      ;(enrollments || []).forEach((enrollment) => {
-        const courseId = enrollment.sections?.courses?.id || enrollment.sections?.course_id
-        if (courseId) {
-          initialSelections[courseId] = enrollment.section_id
-        }
-      })
+        ; (enrollments || []).forEach((enrollment) => {
+          const courseId = enrollment.sections?.courses?.id || enrollment.sections?.course_id
+          if (courseId) {
+            initialSelections[courseId] = enrollment.section_id
+          }
+        })
 
       setEnrollmentSelections(initialSelections)
       setExpandedCourses(expanded)
@@ -847,7 +850,7 @@ function Students() {
         throw new Error('Failed to fetch student details')
       }
       const studentData = await response.json()
-      
+
       // Transform the data for editing
       const transformedStudent = {
         ...studentData,
@@ -856,7 +859,7 @@ function Students() {
         displayId: studentData.displayId,
         faceImages: studentData.faceImages || []
       }
-      
+
       await openEditStudentModal(transformedStudent)
     } catch (error) {
       console.error('Error fetching student details:', error)
@@ -967,7 +970,7 @@ function Students() {
               const attendanceRateValue = student.attendanceRate ?? 0
               // Punctuality should be 0% when no present sessions, regardless of backend value
               const presentSessions = student.presentSessions ?? 0
-              const punctualityRateValue = presentSessions > 0 
+              const punctualityRateValue = presentSessions > 0
                 ? (student.punctualityRate ?? 0)
                 : 0 // Always 0 when no present sessions
               return (
@@ -975,7 +978,7 @@ function Students() {
                   <td className="student-id">{student.displayId || student.id}</td>
                   <td className="student-name">
                     <div>
-                    {student.first_name} {student.last_name}
+                      {student.first_name} {student.last_name}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.15rem' }}>
                       {student.email}
@@ -1005,18 +1008,18 @@ function Students() {
                   </td>
                   <td>
                     <div className="action-buttons">
-                    <button
-                      onClick={() => handleStudentClick(student)}
-                      className="btn btn-small btn-action"
-                    >
+                      <button
+                        onClick={() => handleStudentClick(student)}
+                        className="btn btn-small btn-action"
+                      >
                         View
-                    </button>
-                    <button
-                      onClick={() => openManageEnrollmentModal(student)}
-                      className="btn btn-small btn-action"
-                    >
+                      </button>
+                      <button
+                        onClick={() => openManageEnrollmentModal(student)}
+                        className="btn btn-small btn-action"
+                      >
                         Sections
-                    </button>
+                      </button>
                       <button
                         onClick={() => handleEditStudent(student)}
                         className="btn btn-small btn-action"
@@ -1025,13 +1028,13 @@ function Students() {
                       </button>
                       {userRole === "admin" && (
                         <button
-                        onClick={() => handleDeleteStudent(student)}
-                        className="btn btn-small btn-action"
-                      >
-                        Delete
-                      </button>
+                          onClick={() => handleDeleteStudent(student)}
+                          className="btn btn-small btn-action"
+                        >
+                          Delete
+                        </button>
                       )}
-                      
+
                     </div>
                   </td>
                 </tr>
@@ -1055,102 +1058,102 @@ function Students() {
               <div className="loading">Loading student details...</div>
             ) : selectedStudent ? (
               <>
-            <div className="modal-header">
-              <h2>Student Overview</h2>
-              <button onClick={closeModal} className="close-button">
-                ✕
-              </button>
-            </div>
+                <div className="modal-header">
+                  <h2>Student Overview</h2>
+                  <button onClick={closeModal} className="close-button">
+                    ✕
+                  </button>
+                </div>
 
-            <div className="student-info">
-              <div className="student-header">
-                <div className="student-details">
-                  <div className="student-name-row">
-                    <h3>{selectedStudent.first_name} {selectedStudent.last_name}</h3>
-                    <span className="student-id-badge">
-                      {selectedStudent.displayId || selectedStudent.id}
-                    </span>
+                <div className="student-info">
+                  <div className="student-header">
+                    <div className="student-details">
+                      <div className="student-name-row">
+                        <h3>{selectedStudent.first_name} {selectedStudent.last_name}</h3>
+                        <span className="student-id-badge">
+                          {selectedStudent.displayId || selectedStudent.id}
+                        </span>
+                      </div>
+                      <p className="student-email">{selectedStudent.email}</p>
+                    </div>
                   </div>
-                  <p className="student-email">{selectedStudent.email}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-body student-details-body">
-              <div className="details-overview">
-                <div className="details-overview-header">
-                  <h3>Attendance Summary</h3>
-                  {selectedStudentSummary && (
-                    <span className="details-overview-meta">
-                      {selectedStudentSummary.totalSessions} sessions tracked
-                    </span>
-                  )}
                 </div>
 
-                <div className="metrics-grid">
-                  {selectedStudentSummary?.metrics.map((metric) => (
-                    <div key={metric.key} className="metric-card">
-                      <span className="metric-label">{metric.label}</span>
-                      <span className="metric-value">{metric.value}</span>
-                      {metric.caption && (
-                        <span className="metric-caption">{metric.caption}</span>
+                <div className="modal-body student-details-body">
+                  <div className="details-overview">
+                    <div className="details-overview-header">
+                      <h3>Attendance Summary</h3>
+                      {selectedStudentSummary && (
+                        <span className="details-overview-meta">
+                          {selectedStudentSummary.totalSessions} sessions tracked
+                        </span>
                       )}
                     </div>
-                  ))}
-                </div>
-              </div>
 
-              <div className="attendance-history">
-                <div className="attendance-history-header">
-                  <h3>Attendance History</h3>
-                  {selectedStudentSummary && (
-                    <span className="history-meta">
-                      {selectedStudentSummary.records.length} records
-                    </span>
-                  )}
-                </div>
-
-                {selectedStudentSummary && selectedStudentSummary.records.length > 0 ? (
-                  <div className="history-table-wrapper">
-                    <table className="attendance-table">
-                      <thead>
-                        <tr>
-                          <th>Date</th>
-                          <th>Course</th>
-                          <th>Section</th>
-                          <th>Check In</th>
-                          <th>Check Out</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedStudentSummary.records.map((record) => {
-                          const session = record.attendance_sessions
-                          const section = session?.sections
-
-                          return (
-                            <tr key={record.id}>
-                              <td>{formatSessionDate(session?.session_date)}</td>
-                              <td>{section?.courses?.code || '—'}</td>
-                              <td>{section?.section_code || '—'}</td>
-                              <td>{formatTimeValue(record.checkin_time)}</td>
-                              <td>{formatTimeValue(record.checkout_time)}</td>
-                              <td>
-                                <span className={`status-badge ${(record.status || '').toLowerCase()}`}>
-                                  {record.status || '—'}
-                                </span>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                    <div className="metrics-grid">
+                      {selectedStudentSummary?.metrics.map((metric) => (
+                        <div key={metric.key} className="metric-card">
+                          <span className="metric-label">{metric.label}</span>
+                          <span className="metric-value">{metric.value}</span>
+                          {metric.caption && (
+                            <span className="metric-caption">{metric.caption}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ) : (
-                  <p className="no-records">No attendance records found for this student.</p>
-                )}
-              </div>
-            </div>
+
+                  <div className="attendance-history">
+                    <div className="attendance-history-header">
+                      <h3>Attendance History</h3>
+                      {selectedStudentSummary && (
+                        <span className="history-meta">
+                          {selectedStudentSummary.records.length} records
+                        </span>
+                      )}
+                    </div>
+
+                    {selectedStudentSummary && selectedStudentSummary.records.length > 0 ? (
+                      <div className="history-table-wrapper">
+                        <table className="attendance-table">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Course</th>
+                              <th>Section</th>
+                              <th>Check In</th>
+                              <th>Check Out</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedStudentSummary.records.map((record) => {
+                              const session = record.attendance_sessions
+                              const section = session?.sections
+
+                              return (
+                                <tr key={record.id}>
+                                  <td>{formatSessionDate(session?.session_date)}</td>
+                                  <td>{section?.courses?.code || '—'}</td>
+                                  <td>{section?.section_code || '—'}</td>
+                                  <td>{formatTimeValue(record.checkin_time)}</td>
+                                  <td>{formatTimeValue(record.checkout_time)}</td>
+                                  <td>
+                                    <span className={`status-badge ${(record.status || '').toLowerCase()}`}>
+                                      {record.status || '—'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="no-records">No attendance records found for this student.</p>
+                    )}
+                  </div>
+                </div>
               </>
             ) : null}
           </div>
@@ -1279,12 +1282,12 @@ function Students() {
             <div className="add-student-form">
               <form onSubmit={async (e) => {
                 e.preventDefault()
-                
+
                 // Prevent double submission
                 const submitButton = e.target.querySelector('button[type="submit"]')
                 if (submitButton.disabled) return
                 submitButton.disabled = true
-                
+
                 const formData = new FormData(e.target)
                 const studentData = {
                   email: formData.get('email'),
@@ -1345,7 +1348,7 @@ function Students() {
                   />
                 </div>
 
-  
+
                 <div className="form-group">
                   <label className="form-label">First Name</label>
                   <input
@@ -1429,12 +1432,12 @@ function Students() {
             <div className="add-student-form">
               <form onSubmit={async (e) => {
                 e.preventDefault()
-                
+
                 // Prevent double submission
                 const submitButton = e.target.querySelector('button[type="submit"]')
                 if (submitButton.disabled) return
                 submitButton.disabled = true
-                
+
                 const formData = new FormData(e.target)
                 const faceImagesData = editFaceImages.map((image) => image.data);
                 console.log('Updating student with face images:', faceImagesData.length);

@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.AllArgsConstructor;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.Duration;
 import com.smartattendance.util.converter.AttendanceStatusConverter;
 
@@ -37,11 +38,11 @@ public class AttendanceRecord {
 
     @Setter
     @Column(name = "checkin_time")
-    private LocalDateTime checkinTime;
+    private OffsetDateTime checkinTime;
 
     @Setter
     @Column(name = "checkout_time")
-    private LocalDateTime checkoutTime;
+    private OffsetDateTime checkoutTime;
 
     @Column(name = "notes")
     private String notes;
@@ -121,7 +122,7 @@ public class AttendanceRecord {
      * Mark the student as present.
      * @param time the check-in time
      */
-    public void markPresent(LocalDateTime time) {
+    public void markPresent(OffsetDateTime time) {
         this.checkinTime = time;
         this.status = AttendanceStatus.PRESENT;  // Type-safe enum
     }
@@ -130,7 +131,7 @@ public class AttendanceRecord {
      * Mark the student as late.
      * @param time the check-in time
      */
-    public void markLate(LocalDateTime time) {
+    public void markLate(OffsetDateTime time) {
         this.checkinTime = time;
         this.status = AttendanceStatus.LATE;  // Type-safe enum
     }
@@ -148,7 +149,7 @@ public class AttendanceRecord {
      * Record check-out time.
      * @param time the check-out time
      */
-    public void checkOut(LocalDateTime time) {
+    public void checkOut(OffsetDateTime time) {
         if (!hasCheckedIn()) {
             throw new IllegalStateException("Cannot check out before checking in");
         }
