@@ -85,8 +85,8 @@ public class FaceDetectionUtils {
                 BoundingBox bbox = face.getBoundingBox();
                 Rectangle rectangle = bbox.getBounds();
                 Rect faceRect = new Rect(
-                    new org.opencv.core.Point(rectangle.getX() * 100, rectangle.getY() * 100),
-                    new org.opencv.core.Point(rectangle.getX() * 100 + rectangle.getWidth() * 100, rectangle.getY() * 100 - rectangle.getHeight() * 100)
+                    new org.opencv.core.Point(rectangle.getX() * originalWidth, rectangle.getY() * originalHeight),
+                    new org.opencv.core.Point(rectangle.getX() * originalWidth + rectangle.getWidth() * originalWidth, rectangle.getY() * originalHeight + rectangle.getHeight() * originalHeight)
                 );
 
                 
@@ -239,8 +239,8 @@ public class FaceDetectionUtils {
                 BoundingBox bbox = face.getBoundingBox();
                 Rectangle rectangle = bbox.getBounds();
                 Rect faceRect = new Rect(
-                    new org.opencv.core.Point(rectangle.getX() * 100, rectangle.getY() * 100),
-                    new org.opencv.core.Point(rectangle.getX() * 100 + rectangle.getWidth() * 100, rectangle.getY() * 100 - rectangle.getHeight() * 100)
+                    new org.opencv.core.Point(rectangle.getX() * originalWidth, rectangle.getY() * originalHeight),
+                    new org.opencv.core.Point(rectangle.getX() * originalWidth + rectangle.getWidth() * originalWidth, rectangle.getY() * originalHeight + rectangle.getHeight() * originalHeight)
                 );
                 
                 int centerX = faceRect.x + faceRect.width / 2;
@@ -256,7 +256,7 @@ public class FaceDetectionUtils {
                 int h = Math.min(sideWithMargin, image.height() - y);
                 int side = Math.min(w, h);
 
-                System.out.println("x: " + x + ", y: " + y + ", side: " + side);
+                // System.out.println("x: " + x + ", y: " + y + ", side: " + side);
                 
                 Rect squareRoi = new Rect(x, y, side, side);
                 Mat croppedFace = new Mat(image, squareRoi);
