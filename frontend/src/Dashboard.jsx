@@ -255,7 +255,7 @@ function Dashboard() {
                         </button>
                     </div>
                 ))}
-                {userRole === "instructor" && (
+                {(userRole === "instructor" || userRole === "teaching assistant") && (
                   <div className="card">
                     <h3>Import / Export</h3>
                     <p>Import students from CSV/XLSX or export database report</p>
