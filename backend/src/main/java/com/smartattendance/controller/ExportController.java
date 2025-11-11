@@ -1,51 +1,57 @@
 package com.smartattendance.controller;
 
+import com.smartattendance.dto.request.export.ExportAsCSVRequest;
+import com.smartattendance.dto.request.export.ExportAsXLSXRequest;
 import com.smartattendance.service.ExportService;
-import com.smartattendance.service.FullDatabaseExportService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-import java.io.IOException;
 
-@CrossOrigin(origins = "http://localhost:5173") 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@CrossOrigin(origins = "http://localhost:5173")
 @RestController
 @RequestMapping("/api/export")
 public class ExportController {
 
-    private final FullDatabaseExportService fullDatabaseExportService;
     private final ExportService exportService;
 
-    public ExportController(FullDatabaseExportService fullDatabaseExportService, ExportService exportService) {
-        this.fullDatabaseExportService = fullDatabaseExportService;
+    public ExportController(ExportService exportService) {
         this.exportService = exportService;
     }
 
-    @GetMapping("/full-database-zip")
-    public ResponseEntity<byte[]> exportFullDatabaseAsZip() {
-        try {
-            byte[] zipData = fullDatabaseExportService.exportEntireDatabaseAsZip();
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.parseMediaType("application/zip"));
-            headers.setContentDispositionFormData("attachment", "complete_database_export.zip");
-            headers.setCacheControl("no-cache, no-store, must-revalidate");
-
-            return ResponseEntity.ok()
-                    .headers(headers)
-                    .body(zipData);
-
-        } catch (IOException e) {
-            return ResponseEntity.internalServerError().build();
+    @PostMapping("/export-xlsx")
+    public ResponseEntity<byte[]> exportExcel(@RequestBody ExportAsXLSXRequest request) {
+        if(request == null){
+            return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
+
+        String filename =   "Attendance_Data_" + System.currentTimeMillis() + ".xlsx";
+
+        byte[] excelBytes = exportService.exportSectionAsXLSX(request);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"");
+        headers.add(HttpHeaders.CONTENT_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        headers.setContentLength(excelBytes.length);
+
+        return new ResponseEntity<>(excelBytes, headers, org.springframework.http.HttpStatus.OK);
+
     }
 
-    @GetMapping("/test")
-    public void testEndpoint() {
-        exportService.exportSectionAsXLSX(1);
+    @PostMapping("/export-csv")
+    public ResponseEntity<String> exportCsv(@RequestBody ExportAsCSVRequest request) {
+        if(request == null){
+            return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+
+        String filename = "Attendance_Data_" + System.currentTimeMillis() + ".xlsx";
+
+        String csvContent = exportService.exportSectionAsCSV(request);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"");
+        headers.add(HttpHeaders.CONTENT_TYPE, "text/csv; charset=UTF-8");
+        
+        return new ResponseEntity<>(csvContent, headers, org.springframework.http.HttpStatus.OK);
     }
 }

@@ -1,6 +1,6 @@
 import { useAuth } from "./AuthContext";
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "./supabase";
 import { useRole } from "./role";
 
@@ -14,17 +14,70 @@ function Home() {
         navigate("/login");
     };
 
+    const API_BASE_URL = 'http://localhost:8080'
 
-    const [showExportModal, setShowExportModal] = useState(false)
-    const downloadReport = async () => {
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [sectionList, setSectionList] = useState([]);
+    const [sectionFilter, setSectionFilter] = useState('all');
+    const [yearFilter, setYearFilter] = useState('all');
+    const [semesterFilter, setSemesterFilter] = useState('all');
+    const yearOptions = [2025, 2026, 2027, 2028, 2029, 2030]
+    const semesterOptions = [1, 2];
+
+    const downloadReportAsCSV = async () => {
         try {
-            const response = await fetch("http://localhost:8080/api/export/full-database-zip");
+            const response = await fetch(`${API_BASE_URL}/api/export/export-csv`,
+                {
+                    method: "POST",
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userId: user.user.id,
+                        sectionCode: sectionFilter,
+                        year: yearFilter,
+                        semester: semesterFilter
+                    })
+                }
+            );
+
             const blob = await response.blob();
 
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = "fullDB.zip";
+            a.download = "sectionReport.csv";
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Download failed:", error);
+            alert("Failed to download report");
+        }
+    };
+
+    const downloadReportAsXLSX = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/export/export-xlsx`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        userId: user.user.id,
+                        sectionCode: sectionFilter,
+                        year: yearFilter,
+                        semester: semesterFilter
+                    })
+                }
+            );
+
+            const blob = await response.blob();
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "sectionReport.xlsx";
             a.click();
             window.URL.revokeObjectURL(url);
         } catch (error) {
@@ -80,6 +133,44 @@ function Home() {
         document.getElementById('csvFileInput').click();
     };
 
+    const fetchSections = async () => {
+        const response = await fetch(`${API_BASE_URL}/api/sections`)
+        if (!response.ok) throw new Error('Failed to fetch sections')
+
+        const data = await response.json()
+        // Transform backend data to match frontend expectations
+        const transformedData = data.map(section => ({
+            ...section,
+            section_code: section.sectionCode, // Map camelCase to snake_case
+            courses: section.course ? {
+                code: section.course.code,
+                title: section.course.title
+            } : null
+        }))
+
+        // Sort by year and semester descending
+        transformedData.sort((a, b) => {
+            if (b.year !== a.year) return b.year - a.year
+            return b.semester - a.semester
+        })
+
+        setSectionList(transformedData)
+    };
+
+    const uniqueSections = useMemo(() => {
+        const seen = new Set()
+        return sectionList.filter(section => {
+            if (seen.has(section.section_code)) {
+                return false
+            }
+            seen.add(section.section_code)
+            return true
+        })
+    }, [sectionList])
+
+    useEffect(() => {
+        fetchSections()
+    }, [])
     return (
         <div className="container">
             <div className="header">
@@ -190,7 +281,7 @@ function Home() {
                                 <div>
                                     <h2>Export Course Data</h2>
                                     <p style={{ color: '#6b7280', margin: '0.5rem 0 0 0', fontSize: '0.875rem' }}>
-                                        lajdksjndjasd
+                                        Export attendance and student data for selected sections
                                     </p>
                                 </div>
                                 <div className="modal-header-actions">
@@ -199,10 +290,9 @@ function Home() {
                                     </button>
                                 </div>
                             </div>
-  const [sectionFilter, setSectionFilter] = useState('all')
-                            <div className="modal-body" style={{ padding: 0 }}>
-                                <div className="search-filter-bar">
-                                    <div className="filter-block">
+                            <div className="modal-body">
+                                <div style={{ display: 'flex', marginBottom: '1.5rem', justifyContent: 'space-between' }}>
+                                    <div className="filter-block" style={{ 'flex-grow': 1, 'margin-right': '1rem' }}>
                                         <label className="filter-label" htmlFor="section-filter">Section</label>
                                         <select
                                             id="section-filter"
@@ -212,14 +302,14 @@ function Home() {
                                         >
                                             <option value="all">All Sections</option>
                                             {uniqueSections.map(section => (
-                                                <option key={section.id} value={section.id}>
+                                                <option key={section.id} value={section.section_code}>
                                                     {section.section_code}
                                                 </option>
                                             ))}
                                         </select>
                                     </div>
 
-                                    <div className="filter-block">
+                                    <div className="filter-block" style={{ flexGrow: 1, marginRight: '1rem' }}>
                                         <label className="filter-label" htmlFor="year-filter">Year</label>
                                         <select
                                             id="year-filter"
@@ -233,6 +323,25 @@ function Home() {
                                             ))}
                                         </select>
                                     </div>
+
+                                    <div className="filter-block" style={{ flexGrow: 1 }}>
+                                        <label className="filter-label" htmlFor="semester-filter">Semester</label>
+                                        <select
+                                            id="semester-filter"
+                                            value={semesterFilter}
+                                            onChange={(e) => setSemesterFilter(e.target.value)}
+                                            className="filter-select"
+                                        >
+                                            <option value="all">All Semesters</option>
+                                            {semesterOptions.map(sem => (
+                                                <option key={sem} value={sem}>Semester {sem}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <button className="btn btn-primary-small" onClick={downloadReportAsCSV}>Export as CSV</button>
+                                    <button className="btn btn-primary-small" style={{ marginLeft: '1rem' }} onClick={downloadReportAsXLSX}>Export as XLSX</button>
                                 </div>
                             </div>
                         </div>
