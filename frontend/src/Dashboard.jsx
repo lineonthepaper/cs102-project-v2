@@ -3,6 +3,7 @@ import { useAuth } from "./AuthContext";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import ExportModal from "./ExportModal";
+import ImportSummaryModal from "./ImportSummaryModal";
 
 function Dashboard() {
     const navigate = useNavigate();
@@ -15,6 +16,9 @@ function Dashboard() {
 
     // import/export states
     const [showExportModal, setShowExportModal] = useState(false);
+    const [showImportSummary, setShowImportSummary] = useState(false);
+    const [importSummary, setImportSummary] = useState(null);
+    const [importing, setImporting] = useState(false);
     const handleImportStudents = async (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -26,6 +30,9 @@ function Dashboard() {
         }
 
         try {
+            setImporting(true);
+            setImportSummary(null);
+            setShowImportSummary(false);
             const formData = new FormData();
             formData.append('file', file);
 
@@ -40,21 +47,16 @@ function Dashboard() {
                 throw new Error(result.message || 'Import failed');
             }
 
-            let message = `Successfully imported ${result.imported} out of ${result.total} students!`;
-            if (result.errors && result.errors.length > 0) {
-                message += `\n\nErrors:\n${result.errors.slice(0, 5).join('\n')}`;
-                if (result.errors.length > 5) {
-                    message += `\n... and ${result.errors.length - 5} more errors`;
-                }
-            }
-
-            alert(message);
+            setImportSummary(result);
+            setShowImportSummary(true);
             event.target.value = '';
 
         } catch (error) {
             console.error("Import failed:", error);
             alert(`Failed to import students: ${error.message}`);
             event.target.value = '';
+        } finally {
+            setImporting(false);
         }
     };
 
@@ -108,7 +110,7 @@ function Dashboard() {
     }, [userRole, user]);
 
     const canExport = userRole === "instructor" || userRole === "teaching assistant";
-    const canImport = userRole === "admin";
+    const canImport = userRole === "admin" || userRole === "instructor";
 
     if (loading) {
         return <div className="loading">Loading sections...</div>
@@ -159,7 +161,7 @@ function Dashboard() {
                                 style={{ display: 'none' }}
                                 onChange={handleImportStudents}
                             />
-                            <button onClick={triggerFileInput} className="btn btn-secondary">
+                            <button onClick={triggerFileInput} className="btn btn-secondary" disabled={importing}>
                                 Import Students (ZIP)
                             </button>
                         </div>
@@ -181,6 +183,15 @@ function Dashboard() {
                     onClose={() => setShowExportModal(false)}
                     userId={user.user.id}
                     userRole={userRole}
+                />
+
+                <ImportSummaryModal
+                    isOpen={showImportSummary}
+                    summary={importSummary}
+                    onClose={() => {
+                        setShowImportSummary(false);
+                        setImportSummary(null);
+                    }}
                 />
             </div>
         </div>

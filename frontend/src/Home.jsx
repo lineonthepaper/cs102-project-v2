@@ -4,6 +4,7 @@ import { useState } from "react";
 import { supabase } from "./supabase";
 import { useRole } from "./role";
 import ExportModal from "./ExportModal";
+import ImportSummaryModal from "./ImportSummaryModal";
 
 function Home() {
     const { user, logout } = useAuth();
@@ -17,6 +18,9 @@ function Home() {
     const API_BASE_URL = 'http://localhost:8080'
 
     const [showExportModal, setShowExportModal] = useState(false);
+    const [showImportSummary, setShowImportSummary] = useState(false);
+    const [importSummary, setImportSummary] = useState(null);
+    const [importing, setImporting] = useState(false);
     const handleImportStudents = async (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -28,6 +32,9 @@ function Home() {
         }
 
         try {
+            setImporting(true);
+            setImportSummary(null);
+            setShowImportSummary(false);
             const formData = new FormData();
             formData.append('file', file);
 
@@ -42,26 +49,24 @@ function Home() {
                 throw new Error(result.message || 'Import failed');
             }
 
-            let message = `Successfully imported ${result.imported} out of ${result.total} students!`;
-            if (result.errors && result.errors.length > 0) {
-                message += `\n\nErrors:\n${result.errors.slice(0, 5).join('\n')}`;
-                if (result.errors.length > 5) {
-                    message += `\n... and ${result.errors.length - 5} more errors`;
-                }
-            }
-
-            alert(message);
+            setImportSummary(result);
+            setShowImportSummary(true);
             event.target.value = '';
 
         } catch (error) {
             console.error("Import failed:", error);
             alert(`Failed to import students: ${error.message}`);
             event.target.value = '';
+        } finally {
+            setImporting(false);
         }
     };
 
     const triggerFileInput = () => {
-        document.getElementById('csvFileInput').click();
+        const input = document.getElementById('homeCsvFileInput');
+        if (input) {
+            input.click();
+        }
     };
 
     const canExport = userRole === "instructor" || userRole === "teaching assistant";
@@ -95,7 +100,6 @@ function Home() {
                         </button>
                     </div>
                 )}
-
 
                 <div className="card">
                     <h3>Teaching Assistants</h3>
@@ -150,6 +154,33 @@ function Home() {
                     onClose={() => setShowExportModal(false)}
                     userId={user.user.id}
                     userRole={userRole}
+                />
+
+                {userRole === "admin" && (
+                    <div className="card">
+                        <h3>Import Students</h3>
+                        <p>Import student data and face images from a ZIP package</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <input
+                                id="homeCsvFileInput"
+                                type="file"
+                                accept=".zip"
+                                style={{ display: 'none' }}
+                                onChange={handleImportStudents}
+                            />
+                            <button onClick={triggerFileInput} className="btn btn-secondary" disabled={importing}>
+                                Import Students (ZIP)
+                            </button>
+                        </div>
+                    </div>
+                )}
+                <ImportSummaryModal
+                    isOpen={showImportSummary}
+                    summary={importSummary}
+                    onClose={() => {
+                        setShowImportSummary(false);
+                        setImportSummary(null);
+                    }}
                 />
             </div>
         </div>

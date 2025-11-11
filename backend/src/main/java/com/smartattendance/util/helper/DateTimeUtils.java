@@ -13,23 +13,23 @@ public class DateTimeUtils {
     private static final Map<String, Integer> DAY_NAME_TO_NUMBER = new HashMap<>();
     
     static {
-        // Initialize day mappings (1 = Monday, 7 = Sunday)
-        DAY_NUMBER_TO_NAME.put(1, "Monday");
-        DAY_NUMBER_TO_NAME.put(2, "Tuesday");
-        DAY_NUMBER_TO_NAME.put(3, "Wednesday");
-        DAY_NUMBER_TO_NAME.put(4, "Thursday");
-        DAY_NUMBER_TO_NAME.put(5, "Friday");
-        DAY_NUMBER_TO_NAME.put(6, "Saturday");
-        DAY_NUMBER_TO_NAME.put(7, "Sunday");
+        // Initialize day mappings (0 = Monday, 6 = Sunday) to match DB constraint
+        DAY_NUMBER_TO_NAME.put(0, "Monday");
+        DAY_NUMBER_TO_NAME.put(1, "Tuesday");
+        DAY_NUMBER_TO_NAME.put(2, "Wednesday");
+        DAY_NUMBER_TO_NAME.put(3, "Thursday");
+        DAY_NUMBER_TO_NAME.put(4, "Friday");
+        DAY_NUMBER_TO_NAME.put(5, "Saturday");
+        DAY_NUMBER_TO_NAME.put(6, "Sunday");
         
         // Reverse mapping
-        DAY_NAME_TO_NUMBER.put("Monday", 1);
-        DAY_NAME_TO_NUMBER.put("Tuesday", 2);
-        DAY_NAME_TO_NUMBER.put("Wednesday", 3);
-        DAY_NAME_TO_NUMBER.put("Thursday", 4);
-        DAY_NAME_TO_NUMBER.put("Friday", 5);
-        DAY_NAME_TO_NUMBER.put("Saturday", 6);
-        DAY_NAME_TO_NUMBER.put("Sunday", 7);
+        DAY_NAME_TO_NUMBER.put("Monday", 0);
+        DAY_NAME_TO_NUMBER.put("Tuesday", 1);
+        DAY_NAME_TO_NUMBER.put("Wednesday", 2);
+        DAY_NAME_TO_NUMBER.put("Thursday", 3);
+        DAY_NAME_TO_NUMBER.put("Friday", 4);
+        DAY_NAME_TO_NUMBER.put("Saturday", 5);
+        DAY_NAME_TO_NUMBER.put("Sunday", 6);
     }
     
     /**

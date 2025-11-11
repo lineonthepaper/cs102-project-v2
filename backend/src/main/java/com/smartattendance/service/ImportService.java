@@ -17,8 +17,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.smartattendance.dto.request.user.CreateStudentRequest;
-import com.smartattendance.dto.response.user.StudentDTO;
 import com.smartattendance.dto.response.user.StudentFaceProcessingResult;
+import com.smartattendance.dto.response.user.StudentImportResultDTO;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -49,22 +49,28 @@ public class ImportService {
 
             Path dataFile = findSingleDataFile(extractDir);
 
+            List<String> warnings = new ArrayList<>();
             List<CreateStudentRequest> students;
             if (dataFile.toString().toLowerCase().endsWith(".csv")) {
-                students = parseCsvWithImages(dataFile, extractDir);
+                students = parseCsvWithImages(dataFile, extractDir, warnings);
             } else if (dataFile.toString().toLowerCase().endsWith(".xlsx")) {
-                students = parseXlsxWithImages(dataFile, extractDir);
+                students = parseXlsxWithImages(dataFile, extractDir, warnings);
             } else {
                 throw new IllegalArgumentException("Unsupported file format");
             }
 
-            List<StudentDTO> importedStudents = new ArrayList<>();
+            List<StudentImportResultDTO> importResults = new ArrayList<>();
             List<String> errors = new ArrayList<>();
 
             for (CreateStudentRequest studentRequest : students) {
                 try {
                     StudentFaceProcessingResult result = studentService.createStudent(studentRequest);
-                    importedStudents.add(result.getStudent());
+                    String fullName = result.getStudent().getFirstName() + " " + result.getStudent().getLastName();
+                    importResults.add(StudentImportResultDTO.success(
+                            fullName,
+                            result.getStudent().getEmail(),
+                    result.getStudent(),
+                    result.getFaceProcessingSummary()));
                     if (result.getFaceProcessingSummary() != null && result.getFaceProcessingSummary().hasFailures()) {
                         logger.warn("Imported student {} {} with {} rejected face image(s)",
                                 studentRequest.getFirstName(),
@@ -78,18 +84,30 @@ public class ImportService {
                             e.getMessage());
                     logger.error(errorMsg);
                     errors.add(errorMsg);
+                    String fullName = studentRequest.getFirstName() + " " + studentRequest.getLastName();
+                    importResults.add(StudentImportResultDTO.failure(
+                            fullName,
+                            studentRequest.getEmail(),
+                            e.getMessage()));
                 }
             }
+
+            long importedCount = importResults.stream()
+                    .filter(StudentImportResultDTO::isSuccess)
+                    .count();
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", String.format("Successfully imported %d out of %d students",
-                    importedStudents.size(), students.size()));
-            response.put("imported", importedStudents.size());
+                    importedCount, students.size()));
+            response.put("imported", importedCount);
             response.put("total", students.size());
-            response.put("students", importedStudents);
+            response.put("results", importResults);
             if (!errors.isEmpty()) {
                 response.put("errors", errors);
+            }
+            if (!warnings.isEmpty()) {
+                response.put("warnings", warnings);
             }
 
             return response;
@@ -133,10 +151,12 @@ public class ImportService {
                 .filter(Files::isRegularFile)
                 .filter(p -> {
                     String pathStr = p.toString().toLowerCase();
+                    String fileName = p.getFileName().toString();
                     return (pathStr.endsWith(".csv") || pathStr.endsWith(".xlsx"))
-                            && !pathStr.contains("__MACOSX")
+                            && !pathStr.contains("__macosx")
                             && !pathStr.contains("/.")
-                            && !p.getFileName().toString().startsWith(".");
+                            && !fileName.startsWith(".")
+                            && !fileName.startsWith("~$");
                 })
                 .collect(Collectors.toList());
 
@@ -155,7 +175,7 @@ public class ImportService {
         return csvFiles.get(0);
     }
 
-    private List<CreateStudentRequest> parseCsvWithImages(Path csvFile, Path extractDir)
+    private List<CreateStudentRequest> parseCsvWithImages(Path csvFile, Path extractDir, List<String> warnings)
             throws IOException {
 
         List<CreateStudentRequest> students = new ArrayList<>();
@@ -189,9 +209,7 @@ public class ImportService {
 
             String folderName = firstName + " " + lastName;
 
-            validateStudentFolder(extractDir, folderName, i + 1);
-
-            List<String> imageBase64List = findAndProcessStudentImages(extractDir, folderName);
+            List<String> imageBase64List = findAndProcessStudentImages(extractDir, folderName, warnings, i + 1);
 
             CreateStudentRequest request = new CreateStudentRequest();
             request.setFirstName(firstName);
@@ -231,7 +249,7 @@ public class ImportService {
         return fields.toArray(new String[0]);
     }
 
-    private List<CreateStudentRequest> parseXlsxWithImages(Path xlsxFile, Path extractDir)
+    private List<CreateStudentRequest> parseXlsxWithImages(Path xlsxFile, Path extractDir, List<String> warnings)
             throws IOException {
 
         List<CreateStudentRequest> students = new ArrayList<>();
@@ -266,8 +284,7 @@ public class ImportService {
                 }
 
                 String folderName = firstName + " " + lastName;
-                validateStudentFolder(extractDir, folderName, i + 1);
-                List<String> imageBase64List = findAndProcessStudentImages(extractDir, folderName);
+                List<String> imageBase64List = findAndProcessStudentImages(extractDir, folderName, warnings, i + 1);
 
                 CreateStudentRequest request = new CreateStudentRequest();
                 request.setFirstName(firstName);
@@ -300,7 +317,8 @@ public class ImportService {
         }
     }
 
-    private List<String> findAndProcessStudentImages(Path extractDir, String folderName)
+    private List<String> findAndProcessStudentImages(Path extractDir, String folderName, List<String> warnings,
+            int rowNumber)
             throws IOException {
 
         List<String> imageBase64List = new ArrayList<>();
@@ -311,26 +329,55 @@ public class ImportService {
             List<Path> imageFiles = Files.list(studentFolder)
                     .filter(Files::isRegularFile)
                     .filter(p -> isImageFile(p.getFileName().toString()))
+                    .filter(p -> {
+                        String name = p.getFileName().toString();
+                        return !name.startsWith(".")
+                                && !name.startsWith("~$")
+                                && !name.startsWith("._");
+                    })
                     .sorted()
                     .collect(Collectors.toList());
 
             // Validate: max 8 images
             if (imageFiles.size() > 8) {
-                throw new IllegalArgumentException(
-                        String.format("Student '%s' has %d images (max 8 allowed)",
-                                folderName, imageFiles.size()));
+                warnings.add(String.format(
+                        "Row %d '%s': %d images found. Using first 8 images and skipping the rest.",
+                        rowNumber, folderName, imageFiles.size()));
+                imageFiles = imageFiles.subList(0, 8);
             }
 
             // Convert images to Base64
             for (Path imageFile : imageFiles) {
                 try {
                     byte[] imageBytes = Files.readAllBytes(imageFile);
+
+                    // Skip images smaller than 1 KB (likely invalid)
+                    if (imageBytes.length < 1024) {
+                        warnings.add(String.format(
+                                "Row %d '%s': Image '%s' is too small and was skipped.",
+                                rowNumber, folderName, imageFile.getFileName()));
+                        continue;
+                    }
+
                     String base64 = Base64.getEncoder().encodeToString(imageBytes);
                     imageBase64List.add(base64);
                 } catch (IOException e) {
                     logger.error("Failed to read image file: {}", imageFile, e);
+                    warnings.add(String.format(
+                            "Row %d '%s': Error reading image '%s'.",
+                            rowNumber, folderName, imageFile.getFileName()));
                 }
             }
+
+            if (imageBase64List.isEmpty()) {
+                warnings.add(String.format(
+                        "Row %d '%s': No valid images found. Student will be created without face data.",
+                        rowNumber, folderName));
+            }
+        } else {
+            warnings.add(String.format(
+                    "Row %d '%s': No image folder found. Student will be created without face data.",
+                    rowNumber, folderName));
         }
 
         return imageBase64List;
@@ -342,9 +389,12 @@ public class ImportService {
         try (var stream = Files.walk(extractDir, 3)) {
             List<Path> matchingFolders = stream
                     .filter(Files::isDirectory)
-                    .filter(p -> !p.getFileName().toString().startsWith("__MACOSX"))
-                    .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .filter(p -> p.getFileName().toString().equalsIgnoreCase(folderName))
+                    .filter(p -> {
+                        String name = p.getFileName().toString();
+                        return !name.startsWith(".")
+                                && !name.startsWith("~$")
+                                && name.equalsIgnoreCase(folderName);
+                    })
                     .collect(Collectors.toList());
 
             if (matchingFolders.isEmpty()) {
@@ -352,11 +402,17 @@ public class ImportService {
                 return null;
             }
 
-            if (matchingFolders.size() > 1) {
-                logger.warn("Multiple folders found for '{}': {}", folderName, matchingFolders);
+            List<Path> preferredFolders = matchingFolders.stream()
+                    .filter(p -> !p.toString().toLowerCase().contains("__macosx"))
+                    .collect(Collectors.toList());
+
+            List<Path> candidates = preferredFolders.isEmpty() ? matchingFolders : preferredFolders;
+
+            if (candidates.size() > 1) {
+                logger.warn("Multiple folders found for '{}': {}", folderName, candidates);
             }
 
-            Path found = matchingFolders.get(0);
+            Path found = candidates.get(0);
             logger.info("Found folder: {}", found);
             return found;
         }
@@ -390,35 +446,5 @@ public class ImportService {
         }
     }
 
-    private void validateStudentFolder(Path extractDir, String folderName, int lineNumber)
-            throws IOException {
-
-        Path studentFolder = findStudentFolder(extractDir, folderName);
-
-        if (studentFolder == null || !Files.exists(studentFolder)) {
-            throw new IllegalArgumentException(
-                    String.format("CSV line %d: No folder found for student '%s'", lineNumber, folderName));
-        }
-
-        if (!Files.isDirectory(studentFolder)) {
-            throw new IllegalArgumentException(
-                    String.format("CSV line %d: '%s' is not a folder", lineNumber, folderName));
-        }
-
-        List<Path> imageFiles = Files.list(studentFolder)
-                .filter(Files::isRegularFile)
-                .filter(p -> isImageFile(p.getFileName().toString()))
-                .collect(Collectors.toList());
-
-        if (imageFiles.isEmpty()) {
-            throw new IllegalArgumentException(
-                    String.format("CSV line %d: Folder '%s' contains no valid images", lineNumber, folderName));
-        }
-
-        if (imageFiles.size() > 8) {
-            throw new IllegalArgumentException(
-                    String.format("CSV line %d: Folder '%s' has %d images (max 8 allowed)",
-                            lineNumber, folderName, imageFiles.size()));
-        }
-    }
 }
+

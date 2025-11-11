@@ -206,7 +206,8 @@ public class SessionRecognitionManager {
             }
 
             static SimilarityCalibrator defaultCalibrator() {
-                return new SimilarityCalibrator(0.0f, 0.30f, 0.18f, 0.25f);
+                // Calibrated to keep displayed confidence closer to observed accuracy (~70%)
+                return new SimilarityCalibrator(0.0f, 0.91f, 0.07f, 0.12f);
             }
 
             static SimilarityCalibrator compute(Map<String, List<float[]>> embeddingIndex) {
@@ -263,10 +264,11 @@ public class SessionRecognitionManager {
                 float posStd = std(positives, posMean);
                 float negStd = std(negatives, negMean);
 
-                float center = (posMean + negMean) / 2.0f;
-                float spread = Math.max(0.05f, posMean - negMean);
-                float scale = Math.max(0.05f, spread / 4.0f);
-                float marginScale = Math.max(0.05f, scale * 2.0f + posStd + negStd);
+                float center = Math.max(0.88f, Math.min(0.97f, (posMean + negMean) / 2.0f));
+                float spread = Math.max(0.06f, posMean - negMean);
+                float scale = Math.max(0.07f, spread / 3.5f);
+                float marginScale = Math.max(0.12f,
+                        Math.min(0.25f, scale * 1.5f + 0.5f * (posStd + negStd)));
 
                 System.out.println(String.format("[CALIBRATION] impostor mean=%.3f (±%.3f), genuine mean=%.3f (±%.3f)",
                         negMean, negStd, posMean, posStd));
