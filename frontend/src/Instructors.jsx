@@ -32,6 +32,8 @@ function Instructors() {
   const [sectionSearchTerm, setSectionSearchTerm] = useState("");
   const [sectionCourseFilter, setSectionCourseFilter] = useState("all");
   const [modalCourseFilter, setModalCourseFilter] = useState("all");
+  const [modalYearFilter, setModalYearFilter] = useState("all");
+  const [modalSemesterFilter, setModalSemesterFilter] = useState("all");
 
   const [newInstructorEmail, setNewInstructorEmail] = useState("");
   const [newInstructorPassword, setNewInstructorPassword] = useState("");
@@ -45,6 +47,55 @@ function Instructors() {
     if (user) {
     }
   }, []);
+
+  const meetingDayNames = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+
+  const formatMeetingDay = (value) => {
+    if (value === null || value === undefined) return "Day ?";
+    if (typeof value === "number") {
+      return meetingDayNames[value] ?? `Day ${value}`;
+    }
+    const numericValue = Number(value);
+    if (!Number.isNaN(numericValue)) {
+      return meetingDayNames[numericValue] ?? `Day ${numericValue}`;
+    }
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+    return "Day ?";
+  };
+
+  const formatTimePart = (value) => {
+    if (!value) return "";
+    return value.slice(0, 5);
+  };
+
+  const formatTimeRange = (start, end) => {
+    const startFormatted = formatTimePart(start);
+    const endFormatted = formatTimePart(end);
+    if (!startFormatted && !endFormatted) {
+      return "";
+    }
+    if (startFormatted && endFormatted) {
+      return `${startFormatted} - ${endFormatted}`;
+    }
+    return startFormatted || endFormatted;
+  };
+
+  const formatSemesterLabel = (value) => {
+    if (value === null || value === undefined || value === "") {
+      return "Semester ?";
+    }
+    return `Semester ${value}`;
+  };
 
   const fetchInitialData = async () => {
     try {
@@ -156,6 +207,8 @@ function Instructors() {
     setSelectedSections(currentAssignments);
     setSectionSearchTerm("");
     setModalCourseFilter("all");
+    setModalYearFilter("all");
+    setModalSemesterFilter("all");
     setShowAssignModal(true);
   };
 
@@ -165,6 +218,8 @@ function Instructors() {
     setSelectedSections([]);
     setSectionSearchTerm("");
     setModalCourseFilter("all");
+    setModalYearFilter("all");
+    setModalSemesterFilter("all");
   };
 
   const openAddModal = () => {
@@ -208,6 +263,18 @@ function Instructors() {
           return false;
         }
         if (
+          modalYearFilter !== "all" &&
+          Number(section.year) !== Number(modalYearFilter)
+        ) {
+          return false;
+        }
+        if (
+          modalSemesterFilter !== "all" &&
+          Number(section.semester) !== Number(modalSemesterFilter)
+        ) {
+          return false;
+        }
+        if (
           takenSections.has(sectionId) &&
           !selectedSections.includes(sectionId)
         ) {
@@ -219,6 +286,8 @@ function Instructors() {
           section.section_code?.toLowerCase().includes(lower) ||
           section.courses?.code?.toLowerCase().includes(lower) ||
           section.courses?.title?.toLowerCase().includes(lower) ||
+          `${section.year ?? ""}`.toLowerCase().includes(lower) ||
+          `${section.semester ?? ""}`.toLowerCase().includes(lower) ||
           section.schedule?.toLowerCase().includes(lower) ||
           section.location?.toLowerCase().includes(lower)
         );
@@ -443,6 +512,22 @@ function Instructors() {
     }
   };
 
+  const availableYears = Array.from(
+    new Set(
+      (sections || [])
+        .map((section) => section?.year)
+        .filter((year) => year !== null && year !== undefined)
+    )
+  ).sort((a, b) => Number(a) - Number(b));
+
+  const availableSemesters = Array.from(
+    new Set(
+      (sections || [])
+        .map((section) => section?.semester)
+        .filter((semester) => semester !== null && semester !== undefined)
+    )
+  ).sort((a, b) => Number(a) - Number(b));
+
   if (loading) {
     return <div className="loading">Loading instructors...</div>;
   }
@@ -610,80 +695,148 @@ function Instructors() {
             </div>
 
             <div className="manage-modal-body">
-              <div className="search-toolbar">
-                <div className="search-block">
-                  <label
-                    className="filter-label"
-                    htmlFor="instructor-section-search"
-                  >
-                    Search
-                  </label>
-                  <div className="search-input-wrapper">
-                    <input
-                      id="instructor-section-search"
-                      type="text"
-                      value={sectionSearchTerm}
-                      onChange={(e) => setSectionSearchTerm(e.target.value)}
-                      className="search-input"
-                      placeholder="Search sections..."
-                    />
-                    <span className="search-icon">⚲</span>
+              <div className="section-controls">
+                <div className="section-filter-row">
+                  <div className="filter-block">
+                    <label className="filter-label" htmlFor="instructor-section-search">
+                      Search
+                    </label>
+                    <div className="search-input-wrapper">
+                      <input
+                        id="instructor-section-search"
+                        type="text"
+                        value={sectionSearchTerm}
+                        onChange={(e) => setSectionSearchTerm(e.target.value)}
+                        className="search-input"
+                        placeholder="Search sections..."
+                      />
+                      <span className="search-icon">⚲</span>
+                    </div>
+                  </div>
+                  <div className="filter-block">
+                    <label className="filter-label" htmlFor="section-course-filter">
+                      Course
+                    </label>
+                    <select
+                      id="section-course-filter"
+                      value={modalCourseFilter}
+                      onChange={(e) => setModalCourseFilter(e.target.value)}
+                      className="filter-select"
+                    >
+                      <option value="all">All Courses</option>
+                      {courses.map((course) => (
+                        <option key={course.id} value={course.id}>
+                          {course.code} - {course.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="filter-block">
+                    <label className="filter-label" htmlFor="section-year-filter">
+                      Year
+                    </label>
+                    <select
+                      id="section-year-filter"
+                      value={modalYearFilter}
+                      onChange={(e) => setModalYearFilter(e.target.value)}
+                      className="filter-select"
+                    >
+                      <option value="all">All Years</option>
+                      {availableYears.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="filter-block">
+                    <label className="filter-label" htmlFor="section-semester-filter">
+                      Semester
+                    </label>
+                    <select
+                      id="section-semester-filter"
+                      value={modalSemesterFilter}
+                      onChange={(e) => setModalSemesterFilter(e.target.value)}
+                      className="filter-select"
+                    >
+                      <option value="all">All Semesters</option>
+                      {availableSemesters.map((semester) => (
+                        <option key={semester} value={semester}>
+                          {formatSemesterLabel(semester)}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-                <div className="selection-summary-right">
-                  <span className="selection-badge">
-                    {selectedSections.length} selected
-                  </span>
+                <div className="section-summary-row">
+                  <span className="selection-badge">{selectedSections.length} selected</span>
                 </div>
               </div>
 
-              <div className="ta-sections-rows">
-                {getFilteredSections().map((section) => {
-                  const isSelected = selectedSections.includes(section.id);
-                  return (
-                    <div
-                      key={section.id}
-                      className={`ta-section-row ${
-                        isSelected ? "selected" : ""
-                      }`}
-                    >
-                      <button
-                        className="ta-section-row-btn"
-                        onClick={() => toggleSectionSelection(section.id)}
-                      >
-                        <div className="ta-row-checkbox">
-                          {isSelected && (
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="currentColor"
-                            >
-                              <path d="M20.285 2l-11.285 11.567-5.286-5.011-3.714 3.716 9 8.728 15-15.285z" />
-                            </svg>
-                          )}
-                        </div>
-                        <div className="ta-row-section-code">
-                          {section.section_code}
-                        </div>
-                        <div className="ta-row-title">
-                          {section.courses?.title}
-                        </div>
-                        <div className="ta-row-schedule">
-                          {section.schedule ||
-                            `${section.day_of_week || "Day ?"} ${
-                              section.start_time || ""
-                            }-${section.end_time || ""}`}
-                        </div>
-                      </button>
-                    </div>
-                  );
-                })}
+              <div className="ta-section-table-container">
+                <table className="data-table small dense ta-section-table">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Section</th>
+                      <th>Course</th>
+                      <th>Term</th>
+                      <th>Schedule</th>
+                      <th>Location</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getFilteredSections().map((section) => {
+                      const isSelected = selectedSections.includes(section.id);
+                      const meetingDayLabel = formatMeetingDay(
+                        section.day_of_week ?? section.meeting_day
+                      );
+                      const timeRangeLabel = formatTimeRange(
+                        section.start_time,
+                        section.end_time
+                      );
+                      const yearLabel =
+                        section.year !== null && section.year !== undefined
+                          ? section.year
+                          : "Year ?";
+                      const semesterLabel = formatSemesterLabel(section.semester);
+                      return (
+                        <tr
+                          key={section.id}
+                          className={isSelected ? "selected-row" : ""}
+                          onClick={() => toggleSectionSelection(section.id)}
+                        >
+                          <td className="checkbox-cell">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              readOnly
+                            />
+                          </td>
+                          <td>{section.section_code}</td>
+                          <td>{section.courses?.title || "—"}</td>
+                          <td>
+                            <div>{yearLabel}</div>
+                            <div>{semesterLabel}</div>
+                          </td>
+                          <td>
+                            <div>{meetingDayLabel}</div>
+                            <div>{timeRangeLabel || "—"}</div>
+                          </td>
+                          <td>{section.location || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                    {getFilteredSections().length === 0 && (
+                      <tr>
+                        <td colSpan={6} style={{ textAlign: "center" }}>
+                          No sections available
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
-
-              {getFilteredSections().length === 0 && (
-                <div className="ta-no-sections">No sections available</div>
-              )}
             </div>
 
             <div className="modal-actions">

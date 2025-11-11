@@ -218,6 +218,9 @@ function Dashboard() {
         fetchMyAssignments();
     }, [userRole, user]);
 
+    const canExport = userRole === "instructor" || userRole === "teaching assistant";
+    const canImport = userRole === "admin";
+
     if (loading) {
         return <div className="loading">Loading sections...</div>
     }
@@ -255,29 +258,34 @@ function Dashboard() {
                         </button>
                     </div>
                 ))}
-                {(userRole === "instructor" || userRole === "teaching assistant") && (
-                  <div className="card">
-                    <h3>Import / Export</h3>
-                    <p>Import students from CSV/XLSX or export database report</p>
-                    <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
-                        <input
-                            id="csvFileInput"
-                            type="file"
-                            accept=".zip"
-                            style={{ display: 'none' }}
-                            onChange={handleImportStudents}
-                        />
+                {canImport && (
+                    <div className="card">
+                        <h3>Import Students</h3>
+                        <p>Import student data and face images from a ZIP package</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <input
+                                id="csvFileInput"
+                                type="file"
+                                accept=".zip"
+                                style={{ display: 'none' }}
+                                onChange={handleImportStudents}
+                            />
+                            <button onClick={triggerFileInput} className="btn btn-secondary">
+                                Import Students (ZIP)
+                            </button>
+                        </div>
+                    </div>
+                )}
 
-                        <button onClick={triggerFileInput} className="btn btn-secondary">
-                            Import Students (ZIP)
-                        </button>
+                {canExport && (
+                    <div className="card">
+                        <h3>Export Reports</h3>
+                        <p>Download attendance and enrollment reports for your sections</p>
                         <button onClick={() => { setShowExportModal(true) }} className="btn btn-secondary">
-                            Export Report to CSV
+                            Export Report
                         </button>
                     </div>
-                </div>
                 )}
-                
 
                 {/* Export Modal */}
                 {showExportModal && (
