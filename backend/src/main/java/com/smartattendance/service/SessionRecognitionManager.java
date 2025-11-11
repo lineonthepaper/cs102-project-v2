@@ -70,7 +70,7 @@ public class SessionRecognitionManager {
         this.faceRecognitionService = faceRecognitionService;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public FaceScanResponseDTO scanFace(Long sessionId, byte[] imageBytes) {
         SessionRecognitionContext context = sessionCache.computeIfAbsent(sessionId, this::loadContext);
         return context.match(imageBytes);
@@ -96,7 +96,8 @@ public class SessionRecognitionManager {
 
         if (enrollments.isEmpty()) {
             return new SessionRecognitionContext(session, Collections.emptyMap(), Collections.emptyMap(),
-                    faceRecognitionService, votingWindowSize, votingRequiredVotes, votingMinSimilarity, votingMinMargin,
+                    faceRecognitionService, recordRepository, votingWindowSize, votingRequiredVotes,
+                    votingMinSimilarity, votingMinMargin,
                     "best".equalsIgnoreCase((votingMode != null ? votingMode : "").trim()));
         }
 
@@ -125,8 +126,6 @@ public class SessionRecognitionManager {
             AttendanceStatus status = existingStatuses.get(student.getId());
             if (status != null && status.isPresent()) {
                 System.out.println("[DEBUG]   Student already marked as: " + status + ", skipping");
-                // Already marked present/late – skip to avoid re-scanning
-                continue;
             }
 
             List<float[]> embeddings = new ArrayList<>();
@@ -179,6 +178,7 @@ public class SessionRecognitionManager {
         existingStatuses.keySet().retainAll(retainedIds);
 
         return new SessionRecognitionContext(session, profiles, existingStatuses, faceRecognitionService,
+                recordRepository,
                 votingWindowSize, votingRequiredVotes, votingMinSimilarity, votingMinMargin,
                 "best".equalsIgnoreCase((votingMode != null ? votingMode : "").trim()));
     }
@@ -201,6 +201,7 @@ public class SessionRecognitionManager {
         private final Map<String, StudentProfile> profiles;
         private final Map<String, AttendanceStatus> statuses;
         private final FaceRecognitionService recognitionService;
+        private final AttendanceRecordRepository recordRepository;
         private final Map<String, Integer> voteCounts = new ConcurrentHashMap<>();
         private final Map<String, Float> maxSimilarityById = new ConcurrentHashMap<>();
         private final Map<String, org.opencv.core.Rect> boundingBoxByCandidate = new ConcurrentHashMap<>();
@@ -217,6 +218,7 @@ public class SessionRecognitionManager {
                 Map<String, StudentProfile> profiles,
                 Map<String, AttendanceStatus> statuses,
                 FaceRecognitionService recognitionService,
+                AttendanceRecordRepository recordRepository,
                 int windowSize,
                 int requiredVotes,
                 double minSimilarity,
@@ -226,6 +228,7 @@ public class SessionRecognitionManager {
             this.profiles = profiles;
             this.statuses = new ConcurrentHashMap<>(statuses);
             this.recognitionService = recognitionService;
+            this.recordRepository = recordRepository;
             rebuildEmbeddingIndex();
             this.windowSize = Math.max(1, windowSize);
             this.requiredVotes = Math.max(1, requiredVotes);
@@ -326,95 +329,108 @@ public class SessionRecognitionManager {
                     return FaceScanResponseDTOBuilder.noMatch("No valid frames detected; please try again");
                 }
 
-                // Find candidate with most votes
-                Map.Entry<String, Integer> bestVote = voteCounts.entrySet().stream()
-                        .max((a, b) -> {
-                            int cmp = Integer.compare(a.getValue(), b.getValue());
+                // Find ALL candidates with enough votes
+                List<Map.Entry<String, Integer>> winners = voteCounts.entrySet().stream()
+                        .filter(e -> e.getValue() >= requiredVotes)
+                        .sorted((a, b) -> {
+                            int cmp = Integer.compare(b.getValue(), a.getValue());
                             if (cmp != 0)
                                 return cmp;
-                            // Tie-breaker: higher similarity wins
                             float sa = maxSimilarityById.getOrDefault(a.getKey(), 0.0f);
                             float sb = maxSimilarityById.getOrDefault(b.getKey(), 0.0f);
-                            return Float.compare(sa, sb);
+                            return Float.compare(sb, sa);
                         })
-                        .orElse(null);
+                        .collect(Collectors.toList());
 
-                if (bestVote == null) {
-                    System.out.println("[VOTING] DECISION: No candidate found");
-                    System.out.println("[VOTING] ============================================\n");
-                    resetVoting();
-                    return FaceScanResponseDTOBuilder.noMatch("Scanning...");
-                }
-
-                String studentId = bestVote.getKey();
-                int votes = bestVote.getValue();
-                StudentProfile profile = profiles.get(studentId);
-                String candidateName = profile != null ? profile.getEmail() : studentId;
-
-                System.out.println("[VOTING] Winner: " + candidateName + " with " + votes + " votes");
-
-                // Check minimum votes requirement
-                if (votes < requiredVotes) {
-                    System.out.println("[VOTING] DECISION: REJECTED - insufficient votes (" +
-                            votes + " < " + requiredVotes + " required)");
+                if (winners.isEmpty()) {
+                    System.out.println("[VOTING] DECISION: No candidates met threshold (" + requiredVotes + " votes)");
                     System.out.println("[VOTING] ============================================\n");
                     resetVoting();
                     return FaceScanResponseDTOBuilder.noMatch("No clear match; please try again");
                 }
 
-                if (profile == null) {
-                    System.out.println("[VOTING] DECISION: ERROR - profile not found");
-                    System.out.println("[VOTING] ============================================\n");
-                    resetVoting();
-                    return FaceScanResponseDTOBuilder.noMatch("Error processing match");
-                }
-
-                // Check if already marked
-                AttendanceStatus currentStatus = statuses.get(studentId);
-                if (currentStatus != null && currentStatus.isPresent()) {
-                    double similarity = (double) maxSimilarityById.getOrDefault(studentId, 0.0f);
-                    System.out.println("[VOTING] DECISION: Already marked as " + currentStatus);
-                    System.out.println("[VOTING] ============================================\n");
-                    resetVoting();
-                    return FaceScanResponseDTOBuilder.alreadyMarked(profile, similarity, currentStatus,
-                            "Student already marked as " + currentStatus);
-                }
-
-                // Determine attendance status based on time
+                // Determine attendance status
                 ZonedDateTime now = ZonedDateTime.now(DEFAULT_ZONE);
                 AttendanceStatus recommendedStatus = determineAttendanceStatus(now);
-                double similarity = (double) maxSimilarityById.getOrDefault(studentId, 0.0f);
 
-                System.out.println("[VOTING] DECISION: ACCEPTED ✓");
-                System.out.println("[VOTING]   Student: " + candidateName);
-                System.out.println("[VOTING]   Similarity: " + String.format("%.2f%%", similarity * 100));
-                System.out.println("[VOTING]   Status: " + recommendedStatus);
+                // Auto-mark ALL winners
+                List<RecognizedStudentDTO> markedStudents = new ArrayList<>();
+
+                for (Map.Entry<String, Integer> winner : winners) {
+                    String studentId = winner.getKey();
+                    int votes = winner.getValue();
+                    StudentProfile profile = profiles.get(studentId);
+
+                    if (profile == null) {
+                        System.out.println("[VOTING] WARNING: Profile not found for " + studentId);
+                        continue;
+                    }
+
+                    String candidateName = profile.getEmail();
+
+                    // Check if already marked
+                    AttendanceStatus currentStatus = statuses.get(studentId);
+                    if (currentStatus != null && currentStatus.isPresent()) {
+                        System.out.println(
+                                "[VOTING] " + candidateName + " already marked as " + currentStatus + ", skipping");
+                        continue;
+                    }
+
+                    double similarity = (double) maxSimilarityById.getOrDefault(studentId, 0.0f);
+
+                    updateStatus(studentId, recommendedStatus);
+
+                    try {
+                        AttendanceRecord record = new AttendanceRecord();
+                        record.setSessionId(session.getId());
+                        record.setUserId(studentId);
+                        record.setStatus(recommendedStatus);
+                        record.setCheckinTime(now.toOffsetDateTime());
+                        record.setAutomatic(true); 
+                        record.setConfidenceLevel(similarity);
+
+                        recordRepository.save(record);
+
+                        System.out.println("[VOTING] ✓ AUTO-MARKED & SAVED: " + candidateName);
+                        System.out.println("[VOTING]   Votes: " + votes + "/" + requiredVotes);
+                        System.out.println("[VOTING]   Similarity: " + String.format("%.2f%%", similarity * 100));
+                        System.out.println("[VOTING]   Status: " + recommendedStatus);
+                        System.out.println("[VOTING]   Time: " + now.toOffsetDateTime());
+                        System.out.println("[VOTING]   ✓ Saved to database");
+                    } catch (Exception e) {
+                        System.out.println("[VOTING] ERROR saving to DB: " + e.getMessage());
+                        e.printStackTrace();
+                        continue;
+                    }
+
+                    // Build DTO for response
+                    RecognizedStudentDTO studentDTO = new RecognizedStudentDTO();
+                    studentDTO.setId(profile.getUserId());
+                    studentDTO.setDisplayId(profile.getDisplayId());
+                    studentDTO.setFirstName(profile.getFirstName());
+                    studentDTO.setLastName(profile.getLastName());
+                    studentDTO.setEmail(profile.getEmail());
+
+                    markedStudents.add(studentDTO);
+                }
+
                 System.out.println("[VOTING] ============================================\n");
-
-                // Get bounding box for the winning candidate
-                org.opencv.core.Rect winningBoundingBox = boundingBoxByCandidate.get(studentId);
-                int winningOriginalWidth = originalWidthByCandidate.getOrDefault(studentId, 0);
-                int winningOriginalHeight = originalHeightByCandidate.getOrDefault(studentId, 0);
-
                 resetVoting();
-                return FaceScanResponseDTOBuilder.match(profile, similarity, recommendedStatus, now.toOffsetDateTime(),
-                        winningBoundingBox, winningOriginalWidth, winningOriginalHeight);
+
+                if (markedStudents.isEmpty()) {
+                    return FaceScanResponseDTOBuilder.noMatch("All detected students already marked");
+                }
+
+                // Return multi-student response
+                return FaceScanResponseDTOBuilder.multiMatch(
+                        markedStudents,
+                        recommendedStatus,
+                        now.toOffsetDateTime(),
+                        "Auto-marked " + markedStudents.size() + " student(s)");
             }
 
             System.out.println("[VOTING] Continue scanning... (" + scans + "/" + windowSize + " frames)");
             System.out.println("[VOTING] ============================================\n");
-
-            // Clear bounding boxes for candidates not detected in the current frame
-            if (!candidatesInThisFrame.isEmpty()) {
-                boundingBoxByCandidate.keySet().retainAll(candidatesInThisFrame);
-                originalWidthByCandidate.keySet().retainAll(candidatesInThisFrame);
-                originalHeightByCandidate.keySet().retainAll(candidatesInThisFrame);
-            } else {
-                // No faces detected in this frame - clear all boxes
-                boundingBoxByCandidate.clear();
-                originalWidthByCandidate.clear();
-                originalHeightByCandidate.clear();
-            }
 
             // Return all detected candidates for real-time overlay display
             if (!voteCounts.isEmpty() && !maxSimilarityById.isEmpty()) {
@@ -467,11 +483,6 @@ public class SessionRecognitionManager {
                 statuses.put(userId, status);
             } else {
                 statuses.remove(userId);
-            }
-
-            if (status != null && status.isPresent()) {
-                profiles.remove(userId);
-                rebuildEmbeddingIndex();
             }
         }
     }
@@ -627,6 +638,27 @@ public class SessionRecognitionManager {
             dto.setAlreadyMarked(true);
             dto.setMessage(message);
             dto.setMatched(false);
+            return dto;
+        }
+
+        static FaceScanResponseDTO multiMatch(List<RecognizedStudentDTO> students,
+                AttendanceStatus recommendedStatus,
+                OffsetDateTime checkInTime,
+                String message) {
+            FaceScanResponseDTO dto = new FaceScanResponseDTO();
+            dto.setMatched(true);
+            dto.setAlreadyMarked(false);
+            dto.setSimilarity(0.0);
+            dto.setRecommendedStatus(recommendedStatus != null ? recommendedStatus.getCode() : null);
+            dto.setRecommendedCheckInTime(checkInTime);
+            dto.setMessage(message);
+
+            if (!students.isEmpty()) {
+                dto.setStudent(students.get(0));
+            }
+
+            dto.setAllStudents(students);
+
             return dto;
         }
 

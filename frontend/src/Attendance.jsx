@@ -70,6 +70,9 @@ function Attendance() {
   const { user } = useAuth();
   const userRole = useRole();
 
+  const [toasts, setToasts] = useState([])
+  const toastIdRef = useRef(0)
+
 
   // Get unique sections (no duplicates from different years/semesters)
   const uniqueSections = useMemo(() => {
@@ -157,6 +160,21 @@ function Attendance() {
     }
   };
 
+  const showToast = (message, type = 'success') => {
+    const id = ++toastIdRef.current
+    const toast = { id, message, type }
+    // Add new toast, and limit to 3 toasts max
+    setToasts(prev => [toast, ...prev].slice(0, 3))
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      removeToast(id)
+    }, 5000)
+  }
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }
 
 
   const filterAndSortSessions = () => {
@@ -411,77 +429,79 @@ function Attendance() {
 
     setScannerError('')
 
+    // 1. Handle "Already Marked"
     if (result.alreadyMarked) {
-      setScannerMessage(result.message || 'Student already marked present or late.')
+      const studentName = result.student ? `${result.student.firstName} ${result.student.lastName}`.trim() : 'Student';
+      showToast(`ⓘ ${studentName} is already marked.`, 'info');
       if (result.student?.id) {
         recordSkipForStudent(result.student.id)
       }
       return
     }
 
-    if (!result.matched) {
-      if (result.message) {
-        // Show backend messages but keep it friendly
-        const msg = result.message
-        if (msg.toLowerCase().includes('scanning')) {
-          setScannerMessage('Scanning... Keep your face in view.')
-        } else if (msg.toLowerCase().includes('no valid frames') || msg.toLowerCase().includes('no clear match')) {
-          setScannerMessage('No match found. Please look at the camera.')
-          // Don't stop camera - keep scanning
-        } else if (msg.toLowerCase().includes('please')) {
-          setScannerMessage(msg)
-          // Don't stop camera - keep scanning
-        } else {
-          setScannerMessage(msg)
-        }
+    // 2. Handle a SUCCESSFUL match (this is your multi-mark response)
+    if (result.matched) {
+      let marked = false;
+      const status = result.recommendedStatus || 'MARKED'; // Get status from backend
+
+      // Loop through ALL students the backend marked
+      if (result.allStudents && result.allStudents.length > 0) {
+        result.allStudents.forEach(student => {
+          const studentName = `${student.firstName} ${student.lastName}`.trim();
+          showToast(`✓ ${studentName} marked as ${status}`, 'success');
+          recordSkipForStudent(student.id); // Skip all marked students
+          marked = true;
+        });
+      } else if (result.student) {
+        // Fallback for a single student response
+        const studentName = `${result.student.firstName} ${result.student.lastName}`.trim();
+        showToast(`✓ ${studentName} marked as ${status}`, 'success');
+        recordSkipForStudent(result.student.id);
+        marked = true;
       }
 
-      // Draw overlays for all detected faces
-      if (result.allDetections && result.allDetections.length > 0) {
-        // Deduplicate by student ID (in case backend sends same person multiple times)
-        const uniqueDetections = []
-        const seenIds = new Set()
-        for (const det of result.allDetections) {
-          if (det.student?.id && !seenIds.has(det.student.id)) {
-            seenIds.add(det.student.id)
-            uniqueDetections.push(det)
-          }
-        }
-        drawMultiOverlay(uniqueDetections)
-      } else if (result.student && result.boundingBox) {
-        // Fallback to single overlay for backwards compatibility
-        drawOverlay(result.boundingBox, result.similarity, result.student)
+      if (marked) {
+        // Refresh the attendance list in the modal to show the new status
+        fetchStudentsAndRecords(selectedSession.id, selectedSession.section_id);
+
+        // Clear overlay after a delay
+        setTimeout(() => {
+          clearOverlay();
+          setScannerMessage('Scanning faces...');
+        }, 2000);
+      }
+
+      return; // Stop here
+    }
+
+    // 3. Handle "Scanning..." or "No Match" (i.e., !result.matched)
+    if (result.message) {
+      const msg = result.message
+      if (msg.toLowerCase().includes('scanning')) {
+        setScannerMessage('Scanning... Keep your face in view.')
+      } else if (msg.toLowerCase().includes('no valid frames') || msg.toLowerCase().includes('no clear match')) {
+        setScannerMessage('No match found. Please look at the camera.')
+      } else if (msg.toLowerCase().includes('please')) {
+        setScannerMessage(msg)
       } else {
-        clearOverlay()
+        setScannerMessage(msg)
       }
-
-      return
     }
 
-    const student = result.student
-    if (!student) {
-      return
-    }
-
-    if (shouldSkipStudent(student.id)) {
-      return
-    }
-
-    // Don't stop scanning - just show confirmation modal
-    // Scanning continues in background
-    setScannerError('')
-    setScannerMessage('Match found - please confirm')
-    setRecognizedCandidate({
-      student,
-      similarity: result.similarity,
-      recommendedStatus: result.recommendedStatus,
-      recommendedCheckInTime: result.recommendedCheckInTime,
-      message: result.message || ''
-    })
-
-    // Draw bounding box overlay if available
-    if (result.boundingBox) {
-      drawOverlay(result.boundingBox, result.similarity, student)
+    // Draw overlays for all detected faces
+    if (result.allDetections && result.allDetections.length > 0) {
+      // Deduplicate by student ID
+      const uniqueDetections = []
+      const seenIds = new Set()
+      for (const det of result.allDetections) {
+        if (det.student?.id && !seenIds.has(det.student.id)) {
+          seenIds.add(det.student.id)
+          uniqueDetections.push(det)
+        }
+      }
+      drawMultiOverlay(uniqueDetections)
+    } else {
+      clearOverlay()
     }
   }
 
@@ -628,66 +648,6 @@ function Attendance() {
     ctx.clearRect(0, 0, overlayCanvasRef.current.width, overlayCanvasRef.current.height)
   }
 
-  const resetScannerForNextStudent = () => {
-    // Reset states without closing modal
-    setScannerError('')
-    setScannerMessage('Scanning faces...')
-    clearOverlay()
-
-    // Resume scanning immediately
-    isScanningRef.current = true
-    setIsScannerActive(true)
-    startFrameLoop()
-  }
-
-  const handleScannerAccept = async () => {
-    if (!recognizedCandidate) return
-
-    const { student, recommendedStatus, recommendedCheckInTime } = recognizedCandidate
-    const status = recommendedStatus || calculateStatus(new Date(), selectedSession.session_date, selectedSession.scheduled_start_time)
-    const checkInTime = recommendedCheckInTime || new Date().toISOString()
-
-    try {
-      setScannerMessage(`Recording attendance for ${student.displayId || student.id}...`)
-      await markAttendance(student.id, status, '', checkInTime, recognizedCandidate.similarity)
-      recordSkipForStudent(student.id)
-
-      // Clear candidate immediately to hide profile card, show success message
-      setRecognizedCandidate(null)
-      setScannerMessage(`✓ ${student.displayId || student.id} marked as ${status}`)
-      setScannerError('')
-
-      // Reset for next student after a short delay
-      setTimeout(() => {
-        resetScannerForNextStudent()
-      }, 1500)
-    } catch (error) {
-      console.error('Failed to record attendance from scanner:', error)
-
-      // Clear candidate and show error
-      setRecognizedCandidate(null)
-      setScannerError('Unable to record attendance. Please try manual check-in.')
-      setScannerMessage('Error occurred. Ready to scan next student.')
-      recordSkipForStudent(student.id)
-
-      // Reset for next student after showing error
-      setTimeout(() => {
-        resetScannerForNextStudent()
-      }, 2000)
-    }
-  }
-
-  const handleScannerReject = () => {
-    if (!recognizedCandidate) return
-    const { student } = recognizedCandidate
-    recordSkipForStudent(student.id)
-
-    // Clear candidate first so scanning can resume
-    setRecognizedCandidate(null)
-
-    // Immediately reset for next student without delay or message
-    resetScannerForNextStudent()
-  }
 
   const getSortIcon = (column) => {
     if (sortBy !== column) return '↕'
@@ -721,9 +681,7 @@ function Attendance() {
     // Transform backend data to match frontend expectations
     const transformedData = data.map(section => ({
       ...section,
-      section_code: section.sectionCode,
-      start_time: section.startTime,      
-      end_time: section.endTime,
+      section_code: section.sectionCode, // Map camelCase to snake_case
       courses: section.course ? {
         code: section.course.code,
         title: section.course.title
@@ -1129,6 +1087,44 @@ function Attendance() {
 
   return (
     <div className="container">
+      <div style={{
+        position: 'fixed',
+        top: '80px',
+        right: '20px',
+        zIndex: 10000,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px'
+      }}>
+        {toasts.map(toast => (
+          <div key={toast.id} style={{
+            background: toast.type === 'success' ? '#4CAF50' : (toast.type === 'error' ? '#f44336' : '#2196F3'),
+            color: 'white',
+            padding: '16px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            minWidth: '300px',
+            maxWidth: '400px',
+            animation: 'slideInFromRight 0.3s ease-out'
+          }}>
+            <span style={{ fontSize: '0.9rem', lineHeight: '1.4' }}>{toast.message}</span>
+            <button onClick={() => removeToast(toast.id)} style={{
+              background: 'none',
+              border: 'none',
+              color: 'rgba(255,255,255,0.8)',
+              fontSize: '18px',
+              marginLeft: '16px',
+              cursor: 'pointer',
+              padding: '0 4px'
+            }}>
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
       <div className="page-header">
         <h1>Mark Attendance</h1>
         <button onClick={() => navigate('/home')} className="btn btn-secondary-small">
@@ -1482,13 +1478,16 @@ function Attendance() {
                             </td>
                             <td style={{ fontSize: '0.875rem' }}>
                               {record?.checkin_time
-                                ? new Date(record.checkin_time).toLocaleTimeString('en-SG', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  second: '2-digit',
-                                  hour12: false,
-                                  timeZone: 'Asia/Singapore'
-                                })
+                                ? (() => {
+                                  // Database is storing in a timezone-aware way already
+                                  // Just add 16 hours to compensate (8 hours lost + 8 hours SGT offset)
+                                  const dbDate = new Date(record.checkin_time)
+                                  const sgtDate = new Date(dbDate.getTime() + (16 * 60 * 60 * 1000))
+                                  const hours = String(sgtDate.getUTCHours()).padStart(2, '0')
+                                  const minutes = String(sgtDate.getUTCMinutes()).padStart(2, '0')
+                                  const seconds = String(sgtDate.getUTCSeconds()).padStart(2, '0')
+                                  return `${hours}:${minutes}:${seconds}`
+                                })()
                                 : '-'}
                             </td>
                             <td>
@@ -1611,124 +1610,6 @@ function Attendance() {
                 }} />
                 <canvas ref={canvasRef} style={{ display: 'none' }} />
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirmation Modal - pops up over camera */}
-      {recognizedCandidate && showScannerModal && (
-        <div
-          className="modal-overlay"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.7)',
-            zIndex: 9999,
-          }}
-          onClick={(e) => {
-            e.stopPropagation()
-            handleScannerReject()
-          }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              background: '#fff',
-              borderRadius: '14px',
-              padding: '24px',
-              maxWidth: '500px',
-              width: '90vw',
-              boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ marginTop: 0, marginBottom: '16px', fontSize: '20px', fontWeight: 600 }}>
-              Confirm Attendance
-            </h2>
-
-            {/* Profile Card */}
-            <div style={{
-              background: '#fff',
-              border: '1px solid #ededed',
-              borderRadius: '10px',
-              padding: '16px',
-              color: '#111',
-              fontSize: '0.98em',
-              marginBottom: '20px',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>ID:</span>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{recognizedCandidate.student.displayId || recognizedCandidate.student.id}</span>
-                <span style={{ marginLeft: 8, fontSize: 12, color: '#222', background: '#f4f4f4', padding: '2px 6px', borderRadius: 4 }}>
-                  {Math.round((recognizedCandidate.similarity || 0) * 100)}% match
-                </span>
-              </div>
-              <div style={{ fontSize: '1.2em', fontWeight: 700, marginBottom: 4 }}>
-                {recognizedCandidate.student.firstName} {recognizedCandidate.student.lastName}
-              </div>
-              <div style={{ fontSize: 14, color: '#555', marginBottom: 8 }}>
-                {recognizedCandidate.student.email}
-              </div>
-              <div style={{ fontSize: 13 }}>
-                {recognizedCandidate.recommendedStatus && (
-                  <div style={{ marginBottom: 4 }}>
-                    <strong>Status:</strong> {recognizedCandidate.recommendedStatus}
-                  </div>
-                )}
-                {recognizedCandidate.recommendedCheckInTime && (
-                  <div>
-                    <strong>Check-in:</strong> {new Date(recognizedCandidate.recommendedCheckInTime).toLocaleTimeString('en-SG', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                      timeZone: 'Asia/Singapore'
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button
-                onClick={handleScannerAccept}
-                style={{
-                  flex: 1,
-                  padding: '12px 0',
-                  fontWeight: 600,
-                  color: '#fff',
-                  background: '#000',
-                  border: '1px solid #000',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontSize: '15px'
-                }}
-              >
-                Accept
-              </button>
-              <button
-                onClick={handleScannerReject}
-                style={{
-                  flex: 1,
-                  padding: '12px 0',
-                  fontWeight: 600,
-                  color: '#000',
-                  background: '#fff',
-                  border: '1px solid #000',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontSize: '15px'
-                }}
-              >
-                Reject
-              </button>
             </div>
           </div>
         </div>
