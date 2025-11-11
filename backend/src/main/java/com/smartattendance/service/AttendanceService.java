@@ -23,6 +23,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -264,7 +265,12 @@ public class AttendanceService {
 
             OffsetDateTime checkinTime;
             if (request.getCheckinTime() != null && !request.getCheckinTime().isEmpty()) {
-                checkinTime = OffsetDateTime.parse(request.getCheckinTime(), DateTimeFormatter.ISO_DATE_TIME);
+                try {
+                    checkinTime = OffsetDateTime.parse(request.getCheckinTime(), DateTimeFormatter.ISO_DATE_TIME);
+                } catch (DateTimeParseException parseException) {
+                    LocalDateTime local = LocalDateTime.parse(request.getCheckinTime(), DateTimeFormatter.ISO_DATE_TIME);
+                    checkinTime = local.atZone(ZoneId.of("Asia/Singapore")).toOffsetDateTime();
+                }
             } else {
                 checkinTime = OffsetDateTime.now(ZoneId.of("Asia/Singapore"));
             }

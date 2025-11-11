@@ -333,9 +333,7 @@ public class FaceRecognitionService {
     public static class EmbeddingWithBbox {
         private final float[] embedding;
         private final org.opencv.core.Rect boundingBox;
-        @Getter
         private final int originalWidth;
-        @Getter
         private final int originalHeight;
 
         public EmbeddingWithBbox(float[] embedding, org.opencv.core.Rect boundingBox, 
@@ -352,6 +350,14 @@ public class FaceRecognitionService {
 
         public org.opencv.core.Rect getBoundingBox() {
             return boundingBox;
+        }
+
+        public int getOriginalWidth() {
+            return originalWidth;
+        }
+
+        public int getOriginalHeight() {
+            return originalHeight;
         }
     }
 }

@@ -68,11 +68,17 @@ public class FaceRecognitionUtils {
             return null;
         }
 
+        float mainCutoff = convertLegacyThreshold((float) similarityThreshold);
+        float perImageCutoff = convertLegacyThreshold(perImageThreshold);
+        float strictCutoff = convertLegacyThreshold(singleImageStrictThreshold);
+        float marginCutoff = top2Margin * 2.0f;
+
         System.out.println("\n[MATCHING] ==========================================");
-        System.out.println("[MATCHING] Thresholds: main=" + String.format("%.2f%%", similarityThreshold * 100) +
-                         ", perImage=" + String.format("%.2f%%", perImageThreshold * 100) +
-                         ", singleStrict=" + String.format("%.2f%%", singleImageStrictThreshold * 100) +
-                         ", margin=" + String.format("%.2f%%", top2Margin * 100));
+        System.out.println("[MATCHING] Legacy thresholds (0-1 scale) converted to cosine domain:");
+        System.out.println("[MATCHING]   main=" + String.format("%.3f", mainCutoff) +
+                         ", perImage=" + String.format("%.3f", perImageCutoff) +
+                         ", singleStrict=" + String.format("%.3f", strictCutoff) +
+                         ", margin=" + String.format("%.3f", marginCutoff));
 
         // Track top-2 candidates
         float bestSimilarity = Float.NEGATIVE_INFINITY;
@@ -100,9 +106,9 @@ public class FaceRecognitionUtils {
                     continue;
                 }
                 float similarity = similarity(targetEmbedding, embedding);
-                System.out.println(String.format("[MATCHING]   Image %d: %.2f%%", i + 1, similarity * 100));
+                System.out.println(String.format("[MATCHING]   Image %d: %.3f cosine", i + 1, similarity));
                 
-                if (similarity >= perImageThreshold) {
+                if (similarity >= perImageCutoff) {
                     hitsAbove++;
                 }
                 if (similarity > bestSimilarityForIdentity) {
@@ -135,27 +141,27 @@ public class FaceRecognitionUtils {
 
         // Decision logic - simplified and clear
         System.out.println("\n[MATCHING] Best candidate: " + bestIdentity);
-        System.out.println("[MATCHING]   Best similarity: " + String.format("%.2f%%", bestSimilarity * 100));
+        System.out.println("[MATCHING]   Best cosine: " + String.format("%.3f", bestSimilarity));
         System.out.println("[MATCHING]   Runner-up: " + 
-                         (secondBestSimilarity == Float.NEGATIVE_INFINITY ? "none" : String.format("%.2f%%", secondBestSimilarity * 100)));
+                         (secondBestSimilarity == Float.NEGATIVE_INFINITY ? "none" : String.format("%.3f", secondBestSimilarity)));
         System.out.println("[MATCHING]   Hits above threshold: " + bestIdentityHits + "/" + bestIdentityTotal);
         
         // Check 1: Main threshold
-        boolean passMainThreshold = bestSimilarity >= (float) similarityThreshold;
-        System.out.println("[MATCHING]   Check 1 - Main threshold: " + (passMainThreshold ? "PASS" : "FAIL"));
+        boolean passMainThreshold = bestSimilarity >= mainCutoff;
+        System.out.println("[MATCHING]   Check 1 - Main threshold (cosine): " + (passMainThreshold ? "PASS" : "FAIL"));
         
         // Check 2: Margin from runner-up
         float margin = secondBestSimilarity == Float.NEGATIVE_INFINITY ? 1.0f : (bestSimilarity - secondBestSimilarity);
-        boolean passMargin = margin >= top2Margin;
-        System.out.println("[MATCHING]   Check 2 - Margin (" + String.format("%.2f%%", margin * 100) + "): " + 
+        boolean passMargin = margin >= marginCutoff;
+        System.out.println("[MATCHING]   Check 2 - Margin (" + String.format("%.3f", margin) + "): " + 
                          (passMargin ? "PASS" : "FAIL"));
         
         // Check 3: Consensus (multiple images) OR single-image strict threshold
         boolean passConsensus;
         if (bestIdentityTotal <= 1) {
             // Single reference image: require strict threshold
-            passConsensus = bestSimilarity >= singleImageStrictThreshold;
-            System.out.println("[MATCHING]   Check 3 - Single image strict: " + (passConsensus ? "PASS" : "FAIL"));
+            passConsensus = bestSimilarity >= strictCutoff;
+            System.out.println("[MATCHING]   Check 3 - Single image strict (cosine): " + (passConsensus ? "PASS" : "FAIL"));
         } else {
             // Multiple reference images: require minimum hits
             int required = Math.min(minHitsRequired, bestIdentityTotal);
@@ -202,7 +208,11 @@ public class FaceRecognitionUtils {
         return bestIdentity == null ? null : new ComparisonResult(bestIdentity, bestSimilarity, false);
     }
 
-    private static float similarity(float[] v1, float[] v2) {
+    public static float similarity(float[] v1, float[] v2) {
+        return cosine(v1, v2);
+    }
+
+    public static float cosine(float[] v1, float[] v2) {
         if (v1 == null || v2 == null) {
             System.out.println("[ERROR] Null vector in similarity!");
             return 0.0f;
@@ -224,12 +234,24 @@ public class FaceRecognitionUtils {
         }
         
         // Verify vectors are normalized (magnitude should be ~1.0)
-        if (ret > 1.01f || ret < -1.01f) {
-            System.out.println("[WARNING] Dot product out of range for normalized vectors: " + ret);
-            System.out.println("[WARNING] This suggests vectors are not properly normalized!");
+        float denominator = (float) (Math.sqrt(mod1) * Math.sqrt(mod2));
+        if (denominator == 0.0f) {
+            return 0.0f;
         }
-        System.out.println(((ret / Math.sqrt(mod1) / Math.sqrt(mod2) + 1) / 2.0f));
-        return (float) ((ret / Math.sqrt(mod1) / Math.sqrt(mod2) + 1) / 2.0f);
+        float cosine = ret / denominator;
+        if (cosine > 1.0001f) {
+            System.out.println("[WARNING] Cosine similarity > 1 detected (" + cosine + "). Clamping to 1.");
+        } else if (cosine < -1.0001f) {
+            System.out.println("[WARNING] Cosine similarity < -1 detected (" + cosine + "). Clamping to -1.");
+        }
+        if (Float.isNaN(cosine) || Float.isInfinite(cosine)) {
+            return 0.0f;
+        }
+        return Math.max(-1.0f, Math.min(1.0f, cosine));
+    }
+
+    private static float convertLegacyThreshold(float legacyScore) {
+        return Math.max(-1.0f, Math.min(1.0f, legacyScore * 2.0f - 1.0f));
     }
 
 }

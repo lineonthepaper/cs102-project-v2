@@ -441,10 +441,12 @@ function SectionAttendance() {
     const student = result.student;
     if (!student || shouldSkipStudent(student.id)) return;
 
-    setScannerMessage('Match found - please confirm');
+    setScannerMessage(result.message || 'Match found - please confirm');
     setRecognizedCandidate({
       student,
       similarity: result.similarity,
+      rawSimilarity: result.rawSimilarity ?? null,
+      margin: result.margin ?? null,
       recommendedStatus: result.recommendedStatus,
       recommendedCheckInTime: result.recommendedCheckInTime
     });
@@ -874,6 +876,13 @@ function SectionAttendance() {
               </div>
               <div style={{ fontSize: 14, color: '#555' }}>
                 {recognizedCandidate.student.email}
+              </div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
+                Cosine: {recognizedCandidate.rawSimilarity !== null && recognizedCandidate.rawSimilarity !== undefined
+                  ? recognizedCandidate.rawSimilarity.toFixed(3)
+                  : '—'} | Margin: {recognizedCandidate.margin !== null && recognizedCandidate.margin !== undefined
+                  ? recognizedCandidate.margin.toFixed(3)
+                  : '—'}
               </div>
             </div>
 

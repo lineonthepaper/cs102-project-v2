@@ -5,6 +5,7 @@ import com.smartattendance.dto.request.user.UpdateTAAssignmentsRequest;
 import com.smartattendance.dto.response.user.TADTO;
 import com.smartattendance.entity.TAAssignment;
 import com.smartattendance.entity.User;
+import com.smartattendance.mapper.EntityMapper;
 import com.smartattendance.repository.TAAssignmentRepository;
 import com.smartattendance.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,12 +16,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class TAServiceTest {
@@ -30,6 +33,9 @@ class TAServiceTest {
 
     @Mock
     private TAAssignmentRepository taAssignmentRepository;
+
+    @Mock
+    private EntityMapper mapper;
 
     @InjectMocks
     private TAService taService;
@@ -53,6 +59,8 @@ class TAServiceTest {
         testAssignment.setId(1L);
         testAssignment.setUserId("T0000001");
         testAssignment.setSectionId(1L);
+
+        lenient().when(mapper.toTAAssignmentDTOs(anyList())).thenReturn(Collections.emptyList());
     }
 
     @Test
