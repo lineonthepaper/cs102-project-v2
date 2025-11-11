@@ -20,6 +20,6 @@ public class FaceScanResponseDTO {
     private String message;
     private BoundingBoxDTO boundingBox;
     private List<FaceDetectionDTO> allDetections;
+    private List<RecognizedStudentDTO> allStudents;
 
 }
-

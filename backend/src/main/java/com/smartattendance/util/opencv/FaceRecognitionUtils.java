@@ -99,7 +99,7 @@ public class FaceRecognitionUtils {
                 if (embedding == null) {
                     continue;
                 }
-                float similarity = cosineSimilarity(targetEmbedding, embedding);
+                float similarity = similarity(targetEmbedding, embedding);
                 System.out.println(String.format("[MATCHING]   Image %d: %.2f%%", i + 1, similarity * 100));
                 
                 if (similarity >= perImageThreshold) {
@@ -192,7 +192,7 @@ public class FaceRecognitionUtils {
             if (embeddings == null || embeddings.isEmpty()) continue;
             for (float[] e : embeddings) {
                 if (e == null) continue;
-                float s = cosineSimilarity(targetEmbedding, e);
+                float s = similarity(targetEmbedding, e);
                 if (s > bestSimilarity) {
                     bestSimilarity = s;
                     bestIdentity = entry.getKey();
@@ -202,9 +202,9 @@ public class FaceRecognitionUtils {
         return bestIdentity == null ? null : new ComparisonResult(bestIdentity, bestSimilarity, false);
     }
 
-    private static float cosineSimilarity(float[] v1, float[] v2) {
+    private static float similarity(float[] v1, float[] v2) {
         if (v1 == null || v2 == null) {
-            System.out.println("[ERROR] Null vector in cosineSimilarity!");
+            System.out.println("[ERROR] Null vector in similarity!");
             return 0.0f;
         }
         
@@ -213,18 +213,23 @@ public class FaceRecognitionUtils {
             return 0.0f;
         }
         
-        float dotProduct = 0.0f;
+        float ret = 0.0f;
+        float mod1 = 0.0f;
+        float mod2 = 0.0f;
+        
         for (int i = 0; i < v1.length; i++) {
-            dotProduct += v1[i] * v2[i];
+            ret += v1[i] * v2[i];
+            mod1 += v1[i] * v1[i];
+            mod2 += v2[i] * v2[i];
         }
         
         // Verify vectors are normalized (magnitude should be ~1.0)
-        if (dotProduct > 1.01f || dotProduct < -1.01f) {
-            System.out.println("[WARNING] Dot product out of range for normalized vectors: " + dotProduct);
+        if (ret > 1.01f || ret < -1.01f) {
+            System.out.println("[WARNING] Dot product out of range for normalized vectors: " + ret);
             System.out.println("[WARNING] This suggests vectors are not properly normalized!");
         }
-        
-        return dotProduct;
+        System.out.println(((ret / Math.sqrt(mod1) / Math.sqrt(mod2) + 1) / 2.0f));
+        return (float) ((ret / Math.sqrt(mod1) / Math.sqrt(mod2) + 1) / 2.0f);
     }
 
 }

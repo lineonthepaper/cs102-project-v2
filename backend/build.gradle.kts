@@ -49,6 +49,14 @@ dependencies {
     // Batch Importing and Exporting 
     implementation("org.apache.commons:commons-csv:1.10.0")
     implementation("org.apache.poi:poi-ooxml:5.2.5")
+
+    implementation(files("lib/djl.jar"))
+
+    implementation(platform("ai.djl:bom:0.34.0"))
+
+    implementation("ai.djl.pytorch:pytorch-engine")
+    implementation("ai.djl.pytorch:pytorch-native-cpu")
+    implementation("ai.djl.pytorch:pytorch-jni")
 }
 
 tasks.withType<Test> {

@@ -15,6 +15,13 @@ import org.opencv.objdetect.CascadeClassifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+
+import ai.djl.modality.cv.output.DetectedObjects;
+import ai.djl.modality.cv.output.DetectedObjects.DetectedObject;
+import ai.djl.modality.cv.output.Point;
+import ai.djl.modality.cv.output.BoundingBox;
+import ai.djl.modality.cv.output.Rectangle;
+
 // Note: Landmark alignment requires OpenCV contrib (org.opencv.face). Not available in current build.
 public final class FaceDetectionUtils {
 
@@ -52,6 +59,73 @@ public final class FaceDetectionUtils {
         int originalWidth = image.width();
         int originalHeight = image.height();
 
+        // light face detection!!!
+        try {
+            DetectedObjects detectedObjects = LightFaceDetection.predict(image);
+            int numObjects = detectedObjects.getNumberOfObjects();
+    
+            System.out.println("[FACE DETECTION] LightFace detected " + numObjects + " face(s)");
+    
+            if (numObjects == 1) {
+                DetectedObject face = detectedObjects.item(0);
+                BoundingBox bbox = face.getBoundingBox();
+                Rectangle rectangle = bbox.getBounds();
+                Rect faceRect = new Rect(
+                    new org.opencv.core.Point(rectangle.getX() * originalWidth, rectangle.getY() * originalHeight),
+                    new org.opencv.core.Point(rectangle.getX() * originalWidth + rectangle.getWidth() * originalWidth, rectangle.getY() * originalHeight + rectangle.getHeight() * originalHeight)
+                );
+                
+                int centerX = faceRect.x + faceRect.width / 2;
+                int centerY = faceRect.y + faceRect.height / 2;
+                int maxSide = Math.max(faceRect.width, faceRect.height);
+                int sideWithMargin = (int) Math.round(maxSide * 1.2);
+                
+                int x = centerX - sideWithMargin / 2;
+                int y = centerY - sideWithMargin / 2;
+                x = Math.max(0, Math.min(x, image.width() - 1));
+                y = Math.max(0, Math.min(y, image.height() - 1));
+                int w = Math.min(sideWithMargin, image.width() - x);
+                int h = Math.min(sideWithMargin, image.height() - y);
+                int side = Math.min(w, h);
+                
+                // System.out.println("faceRect.x: " + faceRect.x + ", faceRect.y: " + faceRect.y + ", faceRect.width: " + faceRect.width + ", faceRect.height: " + faceRect.height);
+
+                // System.out.println("rectangle x: " + rectangle.getX() + ", rectangle y: " + rectangle.getY() + ", rectangle width: " + rectangle.getWidth() + ", rectangle height: " + rectangle.getWidth());
+
+                // System.out.println("x: " + x + ", y: " + y + ", side: " + side);
+                
+                Rect squareRoi = new Rect(x, y, side, side);
+                Mat croppedFace = new Mat(image, squareRoi);
+
+                Mat resized = new Mat();
+                int interp = (originalWidth >= 112 || originalHeight >= 112) ? Imgproc.INTER_AREA : Imgproc.INTER_CUBIC;
+                Imgproc.resize(croppedFace, resized, new Size(112,112), 0, 0, interp);
+
+                System.out.println("[FACE DETECTION] ========================================\n");
+                return FaceExtractionOutcome.success(new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight), "Face extracted successfully.");
+
+            } else if (numObjects == 0) {
+                    System.out.println("[FACE DETECTION] FAILED: No face detected");
+                    System.out.println("[FACE DETECTION] ========================================\n");
+                    return FaceExtractionOutcome.failure(
+                    FaceExtractionError.NO_FACE_DETECTED,
+                    "No face was detected in the provided image.",
+                    0);
+            } else {
+                System.out.println("[FACE DETECTION] FAILED: Multiple faces detected (" + numObjects + ")");
+                return FaceExtractionOutcome.failure(
+                    FaceExtractionError.MULTIPLE_FACES_DETECTED,
+                    "Multiple faces detected. Please upload an image with only one face.",
+                    numObjects);
+            }
+    
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            e.printStackTrace();
+        }
+
+        // --- HAAR FALLBACK ---
+        System.out.println("[FACE DETECTION] Falling back to Haar Cascade detector...");
         Mat gray = new Mat();
         Imgproc.cvtColor(image, gray, Imgproc.COLOR_BGR2GRAY);
 
@@ -133,14 +207,17 @@ public final class FaceDetectionUtils {
         }
     }
 
-    public static List<FaceDetectionResult> getAllFacesWithBbox(byte[] imageBytes, CascadeClassifier faceDetector) {
-        List<FaceDetectionResult> results = new ArrayList<>();
+    public static List<FaceExtractionOutcome> getAllFacesWithBbox(byte[] imageBytes, CascadeClassifier faceDetector) {
+        List<FaceExtractionOutcome> results = new ArrayList<>();
 
         logger.info("[MULTI-FACE DETECTION] ========================================");
 
         Mat image = Imgcodecs.imdecode(new MatOfByte(imageBytes), Imgcodecs.IMREAD_COLOR);
         if (image.empty() || image.width() == 0 || image.height() == 0) {
             logger.warn("[MULTI-FACE DETECTION] Failed: Could not decode image");
+            results.add(FaceExtractionOutcome.failure(
+                    FaceExtractionError.IMAGE_DECODE_FAILED,
+                    "Unable to decode the uploaded image."));
             return results;
         }
 
@@ -149,6 +226,59 @@ public final class FaceDetectionUtils {
         int originalWidth = image.width();
         int originalHeight = image.height();
 
+        // light face detection!!! (multi)
+        try {
+            DetectedObjects detectedObjects = LightFaceDetection.predict(image);
+            int numObjects = detectedObjects.getNumberOfObjects();
+    
+            System.out.println("[FACE DETECTION] LightFace detected " + numObjects + " face(s)");
+            
+            for (int i = 0; i < numObjects; i++) {
+                DetectedObject face = detectedObjects.item(i);
+                BoundingBox bbox = face.getBoundingBox();
+                Rectangle rectangle = bbox.getBounds();
+                Rect faceRect = new Rect(
+                    new org.opencv.core.Point(rectangle.getX() * originalWidth, rectangle.getY() * originalHeight),
+                    new org.opencv.core.Point(rectangle.getX() * originalWidth + rectangle.getWidth() * originalWidth, rectangle.getY() * originalHeight + rectangle.getHeight() * originalHeight)
+                );
+                
+                int centerX = faceRect.x + faceRect.width / 2;
+                int centerY = faceRect.y + faceRect.height / 2;
+                int maxSide = Math.max(faceRect.width, faceRect.height);
+                int sideWithMargin = (int) Math.round(maxSide * 1.2);
+                
+                int x = centerX - sideWithMargin / 2;
+                int y = centerY - sideWithMargin / 2;
+                x = Math.max(0, Math.min(x, image.width() - 1));
+                y = Math.max(0, Math.min(y, image.height() - 1));
+                int w = Math.min(sideWithMargin, image.width() - x);
+                int h = Math.min(sideWithMargin, image.height() - y);
+                int side = Math.min(w, h);
+
+                // System.out.println("x: " + x + ", y: " + y + ", side: " + side);
+                
+                Rect squareRoi = new Rect(x, y, side, side);
+                Mat croppedFace = new Mat(image, squareRoi);
+
+                Mat resized = new Mat();
+                int interp = (originalWidth >= 112 || originalHeight >= 112) ? Imgproc.INTER_AREA : Imgproc.INTER_CUBIC;
+                Imgproc.resize(croppedFace, resized, new Size(112,112), 0, 0, interp);
+
+                System.out.println("[FACE DETECTION] ========================================\n");
+                results.add(FaceExtractionOutcome.success(new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight), "Face extracted successfully."));
+            }
+
+            logger.info("[MULTI-FACE DETECTION] Successfully processed {} face(s)", results.size());
+            logger.info("[MULTI-FACE DETECTION] ========================================");
+
+            return results;
+    
+        } catch (Exception e) {
+            System.out.println("error: " + e.getMessage());
+        }
+
+        // Fallback to Haar Cascade
+        System.out.println("[MULTI-FACE DETECTION] Falling back to Haar Cascade detector...");
         Mat gray = new Mat();
         Imgproc.cvtColor(image, gray, Imgproc.COLOR_BGR2GRAY);
 
@@ -191,7 +321,7 @@ public final class FaceDetectionUtils {
                             ? Imgproc.INTER_AREA
                             : Imgproc.INTER_CUBIC;
                     Imgproc.resize(face, resized, new Size(112, 112), 0, 0, interpolation);
-                    results.add(new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight));
+                    results.add(FaceExtractionOutcome.success(new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight), "Face extracted successfully."));
                 } else {
                     logger.debug("[MULTI-FACE DETECTION] Discarded face due to quality check failure");
                 }

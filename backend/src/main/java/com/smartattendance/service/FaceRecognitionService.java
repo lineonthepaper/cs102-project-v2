@@ -210,14 +210,10 @@ public class FaceRecognitionService {
 
         Mat faceMat = detection.getFaceMat();
         try {
-            logger.debug("[EMBEDDING] Computing embedding from 112x112 face region...");
+            System.out.println("[EMBEDDING] Computing embedding from face region...");
             float[] embedding = FaceEmbeddingUtils.faceToEmbedding(faceMat, recognitionNet);
-            logger.info("[EMBEDDING] Successfully computed {}-dimensional embedding", embedding.length);
+            System.out.println("[EMBEDDING] Successfully computed " + embedding.length + "-dimensional embedding");
             return FaceEmbeddingResult.success(embedding, extraction);
-        } catch (Exception ex) {
-            String message = "Failed to compute embedding: " + (ex.getMessage() != null ? ex.getMessage() : "unknown error");
-            logger.error("[EMBEDDING] {}", message, ex);
-            return FaceEmbeddingResult.failure(extraction, message);
         } finally {
             faceMat.release();
         }
@@ -255,7 +251,7 @@ public class FaceRecognitionService {
 
         List<EmbeddingWithBbox> results = new java.util.ArrayList<>();
 
-        List<FaceDetectionResult> detections =
+        List<FaceExtractionOutcome> detections =
                 FaceDetectionUtils.getAllFacesWithBbox(imageBytes, faceDetector);
 
         if (detections == null || detections.isEmpty()) {
@@ -265,19 +261,24 @@ public class FaceRecognitionService {
 
         logger.info("[MULTI-EMBEDDING] Computing embeddings for {} detected face(s)...", detections.size());
 
-        for (FaceDetectionResult detection : detections) {
-            Mat faceMat = detection.getFaceMat();
-            try {
-                float[] embedding = FaceEmbeddingUtils.faceToEmbedding(faceMat, recognitionNet);
-                results.add(new EmbeddingWithBbox(
-                        embedding,
-                        detection.getBoundingBox(),
-                        detection.getOriginalWidth(),
-                        detection.getOriginalHeight()));
-            } catch (Exception ex) {
-                logger.error("[MULTI-EMBEDDING] Failed to compute embedding for detected face", ex);
-            } finally {
-                faceMat.release();
+        for (FaceExtractionOutcome outcome : detections) {
+            if (outcome.isSuccess()) {
+                FaceDetectionResult detection = outcome.getDetectionResultOrNull();
+                Mat faceMat = detection.getFaceMat();
+                try {
+                    float[] embedding = FaceEmbeddingUtils.faceToEmbedding(faceMat, recognitionNet);
+                    results.add(new EmbeddingWithBbox(
+                            embedding,
+                            detection.getBoundingBox(),
+                            detection.getOriginalWidth(),
+                            detection.getOriginalHeight()));
+                } catch (Exception ex) {
+                    logger.error("[MULTI-EMBEDDING] Failed to compute embedding for detected face", ex);
+                } finally {
+                    faceMat.release();
+                }
+            } else {
+                logger.error("[MULTI-EMBEDDING] {}", outcome.getMessage());
             }
         }
 
