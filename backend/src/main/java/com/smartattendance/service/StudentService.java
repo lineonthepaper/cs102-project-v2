@@ -43,6 +43,8 @@ public class StudentService {
     private final ObjectMapper objectMapper;
     private final FaceRecognitionService faceRecognitionService;
 
+    private SessionRecognitionManager sessionRecognitionManager;
+
     public StudentService(
             UserRepository userRepository,
             AttendanceRecordRepository attendanceRecordRepository,
@@ -51,7 +53,8 @@ public class StudentService {
             SectionRepository sectionRepository,
             EntityMapper mapper,
             ObjectMapper objectMapper,
-            FaceRecognitionService faceRecognitionService) {
+            FaceRecognitionService faceRecognitionService,
+            SessionRecognitionManager sessionRecognitionManager) {
         this.userRepository = userRepository;
         this.attendanceRecordRepository = attendanceRecordRepository;
         this.attendanceSessionRepository = attendanceSessionRepository;
@@ -60,6 +63,7 @@ public class StudentService {
         this.mapper = mapper;
         this.objectMapper = objectMapper;
         this.faceRecognitionService = faceRecognitionService;
+        this.sessionRecognitionManager = sessionRecognitionManager;
     }
 
     @Transactional(readOnly = true)
@@ -213,6 +217,7 @@ public class StudentService {
             if (!newSectionIds.contains(enrollment.getSectionId())) {
                 enrollment.setIsActive(false);
                 enrollmentRepository.save(enrollment);
+
             }
         }
 
@@ -238,6 +243,9 @@ public class StudentService {
                 enrollmentRepository.save(newEnrollment);
             }
         }
+
+        sessionRecognitionManager.invalidateSessionsForUser(studentId);
+        logger.info("Invalidated session cache after enrollment update for student: {}", studentId);
     }
 
     @Transactional
@@ -261,7 +269,8 @@ public class StudentService {
         student.setLastName(request.getLastName());
 
         // Update face images if provided (including empty list to clear images)
-        // Persist basic field changes before handling face images (native updates bypass JPA tracking)
+        // Persist basic field changes before handling face images (native updates
+        // bypass JPA tracking)
         entityManager.flush();
 
         if (request.getFaceImages() != null) {
@@ -304,7 +313,11 @@ public class StudentService {
                         .setParameter("id", studentId)
                         .executeUpdate();
 
-                logger.info("Face images and profiles updated for student: {} ({} images, {} profiles)", studentId, faceImages.size(), profiles.size());
+                logger.info("Face images and profiles updated for student: {} ({} images, {} profiles)", studentId,
+                        faceImages.size(), profiles.size());
+
+                sessionRecognitionManager.invalidateSessionsForUser(studentId);
+
             } catch (Exception e) {
                 logger.error("Failed to update face images for student: {}", studentId, e);
                 throw new RuntimeException("Failed to update face images", e);
