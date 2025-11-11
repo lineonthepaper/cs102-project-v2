@@ -19,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -54,18 +56,19 @@ public class AttendanceService {
             session.setSessionDate(LocalDate.parse(request.getSessionDate()));
             session.setScheduledStartTime(LocalTime.parse(request.getScheduledStartTime()));
             session.setScheduledEndTime(LocalTime.parse(request.getScheduledEndTime()));
-            // Automatically determine status based on date/time - ignore status from request
+            // Automatically determine status based on date/time - ignore status from
+            // request
             String autoStatus = session.getAutomaticStatus();
             session.setStatus(autoStatus);
             session.setNotes(request.getNotes());
-    
+
             AttendanceSession savedSession = sessionRepository.save(session);
-            
+
             // Auto-mark absent if session is created with ended status
             if (isEndedStatus(autoStatus)) {
                 autoMarkAbsentForUnmarkedStudents(savedSession.getId(), request.getSectionId());
             }
-            
+
             return mapToSessionDTO(savedSession);
         } catch (Exception e) {
             e.printStackTrace();
@@ -77,8 +80,9 @@ public class AttendanceService {
     public AttendanceSessionResponseDTO reopenSession(Long id) {
         try {
             AttendanceSession session = sessionRepository.findById(id)
-                    .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
-            
+                    .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession",
+                            id.toString()));
+
             session.reopen();
             AttendanceSession reopenedSession = sessionRepository.save(session);
             return mapToSessionDTO(reopenedSession);
@@ -89,13 +93,14 @@ public class AttendanceService {
             throw new InvalidRequestException("Session could not be reopened.");
         }
     }
-    
+
     @Transactional
     public AttendanceSessionResponseDTO archiveSession(Long id) {
         try {
             AttendanceSession session = sessionRepository.findById(id)
-                    .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
-            
+                    .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession",
+                            id.toString()));
+
             session.archive();
             AttendanceSession archivedSession = sessionRepository.save(session);
             return mapToSessionDTO(archivedSession);
@@ -106,20 +111,22 @@ public class AttendanceService {
             throw new InvalidRequestException("Session could not be archived.");
         }
     }
-    
+
     @Transactional
     public AttendanceSessionResponseDTO cancelSession(Long id) {
         try {
             AttendanceSession session = sessionRepository.findById(id)
-                    .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
-            
+                    .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession",
+                            id.toString()));
+
             String oldStatus = session.getStatus();
             session.cancel();
             AttendanceSession cancelledSession = sessionRepository.saveAndFlush(session);
-            
+
             // Verify the status was actually set
-            System.out.println("[CANCEL] Session " + id + " status changed from " + oldStatus + " to " + cancelledSession.getStatus());
-            
+            System.out.println("[CANCEL] Session " + id + " status changed from " + oldStatus + " to "
+                    + cancelledSession.getStatus());
+
             return mapToSessionDTO(cancelledSession);
         } catch (IllegalStateException e) {
             throw new InvalidRequestException(e.getMessage());
@@ -128,49 +135,53 @@ public class AttendanceService {
             throw new InvalidRequestException("Session could not be cancelled.");
         }
     }
-    
+
     @Transactional
     public AttendanceSessionResponseDTO updateSession(Long id, CreateAttendanceSessionRequest request) {
-        try{
+        try {
             AttendanceSession session = sessionRepository.findById(id)
-                    .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession", id.toString()));
-    
+                    .orElseThrow(() -> new com.smartattendance.exception.ResourceNotFoundException("AttendanceSession",
+                            id.toString()));
+
             String oldStatus = session.getStatus();
-            
+
             session.setSectionId(request.getSectionId());
             session.setSessionDate(LocalDate.parse(request.getSessionDate()));
             session.setScheduledStartTime(LocalTime.parse(request.getScheduledStartTime()));
             session.setScheduledEndTime(LocalTime.parse(request.getScheduledEndTime()));
-            // Automatically determine status based on date/time, but preserve manually set statuses
-            // Only update status if it's not a manually set status (CANCELLED, ARCHIVED, etc.)
+            // Automatically determine status based on date/time, but preserve manually set
+            // statuses
+            // Only update status if it's not a manually set status (CANCELLED, ARCHIVED,
+            // etc.)
             if (!session.hasEnded() && !AttendanceConstants.SESSION_STATUS_CANCELLED.equalsIgnoreCase(oldStatus)) {
                 String autoStatus = session.getAutomaticStatus();
                 session.setStatus(autoStatus);
             }
             // If status is manually set (CANCELLED, ARCHIVED, etc.), keep it
             session.setNotes(request.getNotes());
-    
+
             AttendanceSession updatedSession = sessionRepository.save(session);
-            
+
             // Auto-mark absent if session is being closed/ended
             String newStatus = updatedSession.getStatus();
             if (!isEndedStatus(oldStatus) && isEndedStatus(newStatus)) {
                 autoMarkAbsentForUnmarkedStudents(id, request.getSectionId());
             }
-            
+
             return mapToSessionDTO(updatedSession);
         } catch (Exception e) {
             e.printStackTrace();
             throw new InvalidRequestException("Session could not be updated.");
         }
     }
-    
+
     private boolean isEndedStatus(String status) {
-        if (status == null) return false;
+        if (status == null)
+            return false;
         String upper = status.toUpperCase();
         return "ENDED".equals(upper) || "CLOSED".equals(upper) || "COMPLETED".equals(upper);
     }
-    
+
     private void autoMarkAbsentForUnmarkedStudents(Long sessionId, Long sectionId) {
         // Get all enrolled students for this section
         List<String> enrolledStudentIds = enrollmentRepository
@@ -178,30 +189,31 @@ public class AttendanceService {
                 .stream()
                 .map(enrollment -> enrollment.getUserId())
                 .collect(Collectors.toList());
-        
+
         if (enrolledStudentIds.isEmpty()) {
             System.out.println("[AUTO-ABSENT] No enrolled students for session " + sessionId);
             return;
         }
-        
+
         // Get students who already have attendance records
         List<String> markedStudentIds = recordRepository.findBySessionId(sessionId)
                 .stream()
                 .map(record -> record.getUserId())
                 .collect(Collectors.toList());
-        
+
         // Find unmarked students
         List<String> unmarkedStudentIds = enrolledStudentIds.stream()
                 .filter(id -> !markedStudentIds.contains(id))
                 .collect(Collectors.toList());
-        
+
         if (unmarkedStudentIds.isEmpty()) {
             System.out.println("[AUTO-ABSENT] All students already marked for session " + sessionId);
             return;
         }
-        
-        System.out.println("[AUTO-ABSENT] Auto-marking " + unmarkedStudentIds.size() + " students as ABSENT for session " + sessionId);
-        
+
+        System.out.println("[AUTO-ABSENT] Auto-marking " + unmarkedStudentIds.size()
+                + " students as ABSENT for session " + sessionId);
+
         // Create ABSENT records for unmarked students
         for (String studentId : unmarkedStudentIds) {
             AttendanceRecord record = new AttendanceRecord();
@@ -214,7 +226,7 @@ public class AttendanceService {
             record.setConfidenceLevel(0);
             recordRepository.save(record);
         }
-        
+
         System.out.println("[AUTO-ABSENT] Successfully marked " + unmarkedStudentIds.size() + " students as ABSENT");
     }
 
@@ -228,7 +240,8 @@ public class AttendanceService {
 
     /**
      * Mark attendance for a student.
-     * Now using Strategy Pattern - eliminates switch statements and follows Open/Closed Principle!
+     * Now using Strategy Pattern - eliminates switch statements and follows
+     * Open/Closed Principle!
      * 
      * Benefits of Strategy Pattern:
      * - Adding new attendance statuses doesn't require modifying this method
@@ -242,18 +255,20 @@ public class AttendanceService {
             AttendanceRecord record = recordRepository
                     .findBySessionIdAndUserId(request.getSessionId(), request.getUserId())
                     .orElse(new AttendanceRecord());
-    
+
             record.setSessionId(request.getSessionId());
             record.setUserId(request.getUserId());
             record.setNotes(request.getNotes());
             record.setAutomatic(request.isAutomatic());
             record.setConfidenceLevel(request.getConfidenceLevel());
-    
-            // Parse checkin time
-            LocalDateTime checkinTime = request.getCheckinTime() != null && !request.getCheckinTime().isEmpty()
-                    ? LocalDateTime.parse(request.getCheckinTime(), DateTimeFormatter.ISO_DATE_TIME)
-                    : LocalDateTime.now();
-    
+
+            OffsetDateTime checkinTime;
+            if (request.getCheckinTime() != null && !request.getCheckinTime().isEmpty()) {
+                checkinTime = OffsetDateTime.parse(request.getCheckinTime(), DateTimeFormatter.ISO_DATE_TIME);
+            } else {
+                checkinTime = OffsetDateTime.now(ZoneId.of("Asia/Singapore"));
+            }
+
             // Use Strategy Pattern - get the appropriate strategy and execute it
             try {
                 AttendanceMarkingStrategy strategy = strategyFactory.getStrategy(request.getStatus());
@@ -272,7 +287,7 @@ public class AttendanceService {
                     record.setCheckinTime(checkinTime);
                 }
             }
-    
+
             AttendanceRecord savedRecord = recordRepository.save(record);
             recognitionManager.registerAttendance(request.getSessionId(), request.getUserId(), savedRecord.getStatus());
             return mapToRecordDTO(savedRecord);
@@ -289,8 +304,10 @@ public class AttendanceService {
         dto.setSessionDate(session.getSessionDate().toString());
         dto.setScheduledStartTime(session.getScheduledStartTime().toString());
         dto.setScheduledEndTime(session.getScheduledEndTime().toString());
-        // Use actual status from database - preserve manually set statuses (CANCELLED, ARCHIVED, etc.)
-        // Only use automatic status if status is null or if it's a non-manual status that should be auto-calculated
+        // Use actual status from database - preserve manually set statuses (CANCELLED,
+        // ARCHIVED, etc.)
+        // Only use automatic status if status is null or if it's a non-manual status
+        // that should be auto-calculated
         String actualStatus = session.getStatus();
         if (actualStatus == null || actualStatus.isBlank()) {
             dto.setStatus(session.getAutomaticStatus());
@@ -308,8 +325,7 @@ public class AttendanceService {
 
         // Fetch section info
         sectionRepository.findById(session.getSectionId()).ifPresent(section -> {
-            AttendanceSessionResponseDTO.SectionInfoDTO sectionInfo = 
-                new AttendanceSessionResponseDTO.SectionInfoDTO();
+            AttendanceSessionResponseDTO.SectionInfoDTO sectionInfo = new AttendanceSessionResponseDTO.SectionInfoDTO();
             sectionInfo.setSectionCode(section.getSectionCode());
             sectionInfo.setYear(section.getYear());
             // Convert Semester enum to Integer for DTO
@@ -320,8 +336,7 @@ public class AttendanceService {
             sectionInfo.setLocation(section.getLocation());
 
             if (section.getCourse() != null) {
-                AttendanceSessionResponseDTO.CourseInfoDTO courseInfo = 
-                    new AttendanceSessionResponseDTO.CourseInfoDTO();
+                AttendanceSessionResponseDTO.CourseInfoDTO courseInfo = new AttendanceSessionResponseDTO.CourseInfoDTO();
                 courseInfo.setCode(section.getCourse().getCode());
                 courseInfo.setTitle(section.getCourse().getTitle());
                 sectionInfo.setCourse(courseInfo);
@@ -340,12 +355,9 @@ public class AttendanceService {
         dto.setSessionId(record.getSessionId());
         // Convert AttendanceStatus enum to String for DTO
         dto.setStatus(record.getStatus() != null ? record.getStatus().getCode() : null);
-        dto.setCheckinTime(record.getCheckinTime() != null ? 
-            record.getCheckinTime().toString() : null);
-        dto.setCheckoutTime(record.getCheckoutTime() != null ? 
-            record.getCheckoutTime().toString() : null);
+        dto.setCheckinTime(record.getCheckinTime() != null ? record.getCheckinTime().toString() : null);
+        dto.setCheckoutTime(record.getCheckoutTime() != null ? record.getCheckoutTime().toString() : null);
         dto.setNotes(record.getNotes());
         return dto;
     }
 }
-

@@ -2,6 +2,7 @@ package com.smartattendance.controller;
 
 import com.smartattendance.dto.request.user.CreateStudentRequest;
 import com.smartattendance.dto.response.user.StudentDTO;
+import com.smartattendance.dto.response.user.StudentFaceProcessingResult;
 import com.smartattendance.dto.request.user.UpdateEnrollmentRequest;
 import com.smartattendance.dto.request.user.UpdateStudentRequest;
 import com.smartattendance.service.StudentService;
@@ -11,7 +12,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.List;
@@ -61,12 +61,20 @@ public class StudentController {
     @PostMapping
     public ResponseEntity<Map<String, Object>> createStudent(@Valid @RequestBody CreateStudentRequest request) {
         logger.info("Creating student with email: {}", request.getEmail());
-        StudentDTO student = studentService.createStudent(request);
+        StudentFaceProcessingResult result = studentService.createStudent(request);
+        StudentDTO student = result.getStudent();
 
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
-        response.put("message", "Student added successfully!");
+        String message = "Student added successfully!";
+        if (result.getFaceProcessingSummary() != null && result.getFaceProcessingSummary().hasFailures()) {
+            message += " Some face images were rejected.";
+        }
+        response.put("message", message);
         response.put("student", student);
+        if (result.getFaceProcessingSummary() != null) {
+            response.put("faceProcessingSummary", result.getFaceProcessingSummary());
+        }
 
         logger.info("Student created successfully with ID: {}", student.getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -77,12 +85,20 @@ public class StudentController {
             @PathVariable String id,
             @Valid @RequestBody UpdateStudentRequest request) {
         logger.info("Updating student: {}", id);
-        StudentDTO student = studentService.updateStudent(id, request);
+        StudentFaceProcessingResult result = studentService.updateStudent(id, request);
+        StudentDTO student = result.getStudent();
 
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
-        response.put("message", "Student updated successfully!");
+        String message = "Student updated successfully!";
+        if (result.getFaceProcessingSummary() != null && result.getFaceProcessingSummary().hasFailures()) {
+            message += " Some face images were rejected.";
+        }
+        response.put("message", message);
         response.put("student", student);
+        if (result.getFaceProcessingSummary() != null) {
+            response.put("faceProcessingSummary", result.getFaceProcessingSummary());
+        }
 
         logger.info("Student updated successfully: {}", id);
         return ResponseEntity.ok(response);

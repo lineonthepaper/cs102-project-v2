@@ -3,7 +3,7 @@ package com.smartattendance.service.strategy;
 import com.smartattendance.entity.AttendanceRecord;
 import com.smartattendance.util.constants.AttendanceConstants;
 import org.springframework.stereotype.Component;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 /**
  * Strategy for marking students as absent.
@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 public class AbsentAttendanceStrategy implements AttendanceMarkingStrategy {
     
     @Override
-    public void mark(AttendanceRecord record, LocalDateTime checkinTime) {
+    public void mark(AttendanceRecord record, OffsetDateTime checkinTime) {
         record.markAbsent();
         // Note: markAbsent() clears checkinTime as students who are absent didn't check in
     }

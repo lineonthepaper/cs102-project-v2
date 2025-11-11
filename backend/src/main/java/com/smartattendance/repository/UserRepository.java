@@ -15,4 +15,5 @@ public interface UserRepository extends JpaRepository<User, String> {
     List<User> findByIsStudentTrue();
     List<User> findByIsInstructorTrue();
     List<User> findByIsTATrue();
+    Optional<User> findFirstByIdStartingWithOrderByIdDesc(String prefix);
 }

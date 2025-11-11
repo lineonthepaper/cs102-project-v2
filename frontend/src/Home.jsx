@@ -241,16 +241,16 @@ function Home() {
                 )}
 
 
-                <div className="card">
-                    <h3>Mark Attendance</h3>
-                    <p>Create sessions, mark student attendance, and manage records</p>
-                    <button
-                        onClick={() => navigate("/attendance")}
-                        className="btn btn-secondary"
-                    >
-                        Mark Attendance
-                    </button>
-                </div>
+        <div className="card">
+          <h3>Mark Attendance</h3>
+          <p>Create sessions, mark student attendance, and manage records</p>
+          <button
+            onClick={() => navigate("/attendance/all")}
+            className="btn btn-secondary"
+          >
+            Mark Attendance
+          </button>
+        </div>
 
                 <div className="card">
                     <h3>Import / Export</h3>
