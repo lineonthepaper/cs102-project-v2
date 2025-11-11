@@ -12,5 +12,6 @@ public abstract class ExportRequest {
     public String sectionCode;
     public String year;
     public String semester;
+    public String role;
 }
 

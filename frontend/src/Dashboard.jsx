@@ -35,7 +35,8 @@ function Dashboard() {
                         userId: user.user.id,
                         sectionCode: sectionFilter,
                         year: yearFilter,
-                        semester: semesterFilter
+                        semester: semesterFilter,
+                        role: userRole
                     })
                 }
             );
@@ -66,7 +67,8 @@ function Dashboard() {
                         userId: user.user.id,
                         sectionCode: sectionFilter,
                         year: yearFilter,
-                        semester: semesterFilter
+                        semester: semesterFilter,
+                        role: userRole
                     })
                 }
             );

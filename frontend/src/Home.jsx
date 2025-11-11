@@ -13,7 +13,6 @@ function Home() {
         logout();
         navigate("/login");
     };
-
     const API_BASE_URL = 'http://localhost:8080'
 
     const [showExportModal, setShowExportModal] = useState(false);
@@ -36,7 +35,8 @@ function Home() {
                         userId: user.user.id,
                         sectionCode: sectionFilter,
                         year: yearFilter,
-                        semester: semesterFilter
+                        semester: semesterFilter,
+                        role: userRole
                     })
                 }
             );
@@ -67,7 +67,8 @@ function Home() {
                         userId: user.user.id,
                         sectionCode: sectionFilter,
                         year: yearFilter,
-                        semester: semesterFilter
+                        semester: semesterFilter,
+                        role: userRole
                     })
                 }
             );
@@ -291,7 +292,7 @@ function Home() {
                             </div>
                             <div className="modal-body">
                                 <div style={{ display: 'flex', marginBottom: '1.5rem', justifyContent: 'space-between' }}>
-                                    <div className="filter-block" style={{ 'flex-grow': 1, 'margin-right': '1rem' }}>
+                                    <div className="filter-block" style={{ flexGrow: 1, marginRight: '1rem' }}>
                                         <label className="filter-label" htmlFor="section-filter">Section</label>
                                         <select
                                             id="section-filter"

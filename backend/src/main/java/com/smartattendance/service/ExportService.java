@@ -34,7 +34,7 @@ public class ExportService {
 
         try {
 
-            if (data.isEmpty() || data == null) {
+            if (data == null || data.isEmpty()) {
                 Sheet sheet = createNewSheet(workbook, "Attendance Data");
 
                 Row row = sheet.createRow(1);
@@ -64,7 +64,7 @@ public class ExportService {
     public String exportSectionAsCSV(ExportAsCSVRequest request) {
         List<Map<String, Object>> data = getCourseDataFromDatabase(request);
 
-        if (data.isEmpty() || data == null) {
+        if (data == null || data.isEmpty()) {
             return "No data found for the specified criteria.";
         }
 
@@ -118,47 +118,94 @@ public class ExportService {
 
     private List<Map<String, Object>> getCourseDataFromDatabase(ExportRequest request) {
         // sql params here
-        String instructorId = "='" + request.getUserId() + "'";
-        String sectionCode = request.getSectionCode().equals("all") ? " like '%'"
+        String userIdSql;
+
+        if (request.getRole().equals("admin")) {
+            userIdSql = "";
+        } else if (request.getRole().equals("instructor")) {
+            userIdSql = "AND sa.user_id = '" + request.getUserId().toString() + "'";
+        } else if (request.getRole().equals("teaching assistant")) {
+            userIdSql = "AND ta.user_id = '" + request.getUserId().toString() + "'";
+        } else {
+            return null;
+        }
+
+        String sectionCodeSql = request.getSectionCode().equals("all") ? " like '%'"
                 : "= '" + request.getSectionCode() + "'";
-        String year = request.getYear().equals("all") ? "> 0" : "=" + request.getYear();
-        String semester = request.getSemester().equals("all") ? "> 0" : "=" + request.getSemester();
+        String yearSql = request.getYear().equals("all") ? "> 0" : "=" + request.getYear();
+        String semesterSql = request.getSemester().equals("all") ? "> 0" : "=" + request.getSemester();
 
         // fetch from db
-        List<Map<String, Object>> data = jdbcTemplate
-                .queryForList("SELECT\r\n" + //
-                        "    ar.*, \r\n" + //
-                        "    u.first_name, \r\n" + //
-                        "    u.last_name, \r\n" + //
-                        "    c.title, \r\n" + //
-                        "    c.code, \r\n" + //
-                        "    asess.session_date, \r\n" + //
-                        "    s.section_code, \r\n" + //
-                        "    s.year, \r\n" + //
-                        "    s.semester \r\n" + //
-                        "FROM \r\n" + //
-                        "    section_assignments sa \r\n" + //
-                        "JOIN \r\n" + //
-                        "    sections s ON sa.section_id = s.id \r\n" + //
-                        "JOIN \r\n" + //
-                        "    courses c ON s.course_id = c.id \r\n" + //
-                        "LEFT JOIN \r\n" + //
-                        "    attendance_sessions asess ON s.id = asess.section_id \r\n" + //
-                        "LEFT JOIN \r\n" + //
-                        "    attendance_records ar ON asess.id = ar.session_id \r\n" + //
-                        "LEFT JOIN \r\n" + //
-                        "    users u ON ar.user_id = u.id \r\n" + //
-                        "WHERE \r\n" + //
-                        "    s.year " + year + " \r\n" + //
-                        "    AND sa.user_id " + instructorId + " \r\n" + //
-                        "    AND s.semester " + semester + " \r\n" + //
-                        "    AND s.section_code " + sectionCode + " \r\n" + //
-                        "ORDER BY \r\n" + //
-                        "    ar.id ASC nulls last,\r\n" + //
-                        "    s.section_code ASC, \r\n" + //
-                        "    s.year DESC, \r\n" + //
-                        "    s.semester ASC\r\n");
-        
+        List<Map<String, Object>> data = null;
+        if (request.getRole().equals("admin") || request.getRole().equals("instructor")) {
+            data = jdbcTemplate.queryForList("SELECT\r\n" + //
+                    "   ar.*, \r\n" + //
+                    "   u.first_name, \r\n" + //
+                    "   u.last_name, \r\n" + //
+                    "   c.title, \r\n" + //
+                    "   c.code, \r\n" + //
+                    "   asess.session_date, \r\n" + //
+                    "   s.section_code, \r\n" + //
+                    "   s.year, \r\n" + //
+                    "   s.semester \r\n" + //
+                    "FROM \r\n" + //
+                    "   section_assignments sa \r\n" + //
+                    "JOIN \r\n" + //
+                    "   sections s ON sa.section_id = s.id \r\n" + //
+                    "JOIN \r\n" + //
+                    "   courses c ON s.course_id = c.id \r\n" + //
+                    "LEFT JOIN \r\n" + //
+                    "   attendance_sessions asess ON s.id = asess.section_id \r\n" + //
+                    "LEFT JOIN \r\n" + //
+                    "   attendance_records ar ON asess.id = ar.session_id \r\n" + //
+                    "LEFT JOIN \r\n" + //
+                    "   users u ON ar.user_id = u.id \r\n" + //
+                    "WHERE \r\n" + //
+                    "   s.year " + yearSql + " \r\n" + //
+                    userIdSql + " \r\n" + //
+                    "   AND s.semester " + semesterSql + " \r\n" + //
+                    "   AND s.section_code " + sectionCodeSql + " \r\n" + //
+                    "ORDER BY \r\n" + //
+                    "   ar.id ASC nulls last,\r\n" + //
+                    "   s.section_code ASC, \r\n" + //
+                    "   s.year DESC, \r\n" + //
+                    "   s.semester ASC\r\n");
+
+        } else {
+            data = jdbcTemplate.queryForList("SELECT\r\n" + //
+                    "   ar.*,\r\n" + //
+                    "   u.first_name,\r\n" + //
+                    "   u.last_name,\r\n" + //
+                    "   c.title,\r\n" + //
+                    "   c.code,\r\n" + //
+                    "   asess.session_date,\r\n" + //
+                    "   s.section_code,\r\n" + //
+                    "   s.year,\r\n" + //
+                    "   s.semester\r\n" + //
+                    "FROM\r\n" + //
+                    "   ta_assignments ta\r\n" + //
+                    "JOIN\r\n" + //
+                    "   sections s ON ta.section_id = s.id\r\n" + //
+                    "JOIN\r\n" + //
+                    "   courses c ON s.course_id = c.id\r\n" + //
+                    "LEFT JOIN\r\n" + //
+                    "   attendance_sessions asess ON s.id = asess.section_id\r\n" + //
+                    "LEFT JOIN\r\n" + //
+                    "   attendance_records ar ON asess.id = ar.session_id\r\n" + //
+                    "LEFT JOIN\r\n" + //
+                    "   users u ON ar.user_id = u.id\r\n" + //
+                    "WHERE\r\n" + //
+                    "   s.year " + yearSql + " \r\n" + //
+                    userIdSql + " \r\n" + //
+                    "   AND s.semester " + semesterSql + " \r\n" + //
+                    "   AND s.section_code " + sectionCodeSql + " \r\n" + //
+                    "ORDER BY\r\n" + //
+                    "   ar.id ASC nulls last,\r\n" + //
+                    "   s.section_code ASC,\r\n" + //
+                    "   s.year DESC,\r\n" + //
+                    "   s.semester ASC");
+
+        }
         return data;
     }
 
@@ -180,7 +227,7 @@ public class ExportService {
 
     private void insertDataIntoSheet(XLSXSheetEntry sheetEntry, Map<String, Object> dataRow) {
         if (dataRow.get("session_id") == null) {
-            if(sheetEntry.getCurrentRowIndex() == 1) {
+            if (sheetEntry.getCurrentRowIndex() == 1) {
                 Sheet sheet = sheetEntry.getSheet();
                 Row row = sheet.createRow(1);
                 row.createCell(0).setCellValue("No data found for the specified criteria.");
