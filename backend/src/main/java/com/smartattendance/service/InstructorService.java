@@ -33,6 +33,9 @@ public class InstructorService {
     private final SectionAssignmentRepository sectionAssignmentRepository;
     private final EntityMapper mapper;
 
+    private static final String INSTRUCTOR_ID_PREFIX = "I";
+    private static final int ID_NUMBER_LENGTH = 7;
+
     public InstructorService(UserRepository userRepository, SectionAssignmentRepository sectionAssignmentRepository, EntityMapper mapper) 
     {
         this.userRepository = userRepository;
@@ -76,12 +79,15 @@ public class InstructorService {
                 userRepository.save(user);
                 return mapToInstructorDTO(user, Collections.emptyList());
             } else {
+                String newInstructorId = generateNextInstructorId();
+
                 // Create new instructor using native SQL to allow database trigger to generate ID
-                String sql = "INSERT INTO users (email, first_name, last_name, is_instructor, is_student, is_ta, enabled, created_at) " +
-                             "VALUES (:email, :firstName, :lastName, true, false, false, true, CURRENT_TIMESTAMP) " +
+                String sql = "INSERT INTO users (id, email, first_name, last_name, is_instructor, is_student, is_ta, enabled, created_at) " +
+                             "VALUES (:id, :email, :firstName, :lastName, true, false, false, true, CURRENT_TIMESTAMP) " +
                              "RETURNING id";
                 
                 String generatedId = (String) entityManager.createNativeQuery(sql)
+                        .setParameter("id", newInstructorId)
                         .setParameter("email", request.getEmail())
                         .setParameter("firstName", request.getFirstName())
                         .setParameter("lastName", request.getLastName())
@@ -97,6 +103,31 @@ public class InstructorService {
             e.printStackTrace();
             throw new InvalidRequestException("Instructor could not be added.");
         }
+    }
+
+    private String generateNextInstructorId() {
+        int nextNumber = 1;
+        Optional<User> latestInstructor = userRepository.findFirstByIdStartingWithOrderByIdDesc(INSTRUCTOR_ID_PREFIX);
+
+        if (latestInstructor.isPresent()) {
+            String latestId = latestInstructor.get().getId();
+            if (latestId != null && latestId.startsWith(INSTRUCTOR_ID_PREFIX)) {
+                String numericPart = latestId.substring(INSTRUCTOR_ID_PREFIX.length());
+                if (numericPart.matches("\\d+")) {
+                    try {
+                        nextNumber = Integer.parseInt(numericPart) + 1;
+                    } catch (NumberFormatException ignored) {
+                        nextNumber = 1;
+                    }
+                }
+            }
+        }
+
+        if (nextNumber < 1) {
+            nextNumber = 1;
+        }
+
+        return INSTRUCTOR_ID_PREFIX + String.format("%0" + ID_NUMBER_LENGTH + "d", nextNumber);
     }
 
     @Transactional

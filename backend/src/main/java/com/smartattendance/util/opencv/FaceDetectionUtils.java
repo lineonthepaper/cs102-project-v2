@@ -1,11 +1,20 @@
 package com.smartattendance.util.opencv;
-import java.io.File;
+
+import java.util.ArrayList;
 import java.util.List;
 
-import org.opencv.core.*;
-import org.opencv.imgcodecs.*;
-import org.opencv.imgproc.*;
-import org.opencv.objdetect.*;
+import org.opencv.core.Mat;
+import org.opencv.core.MatOfByte;
+import org.opencv.core.MatOfRect;
+import org.opencv.core.Rect;
+import org.opencv.core.Size;
+import org.opencv.imgcodecs.Imgcodecs;
+import org.opencv.imgproc.Imgproc;
+import org.opencv.imgproc.CLAHE;
+import org.opencv.objdetect.CascadeClassifier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 import ai.djl.modality.cv.output.DetectedObjects;
 import ai.djl.modality.cv.output.DetectedObjects.DetectedObject;
@@ -14,62 +23,39 @@ import ai.djl.modality.cv.output.BoundingBox;
 import ai.djl.modality.cv.output.Rectangle;
 
 // Note: Landmark alignment requires OpenCV contrib (org.opencv.face). Not available in current build.
+public final class FaceDetectionUtils {
 
-public class FaceDetectionUtils {
+    private static final Logger logger = LoggerFactory.getLogger(FaceDetectionUtils.class);
 
-    // Only one public detector. Prefer SCRFD ONNX, fallback to Haar cascade.
-    private static volatile OnnxFaceDetector scrfd = null;
-    private static final Object scrfdLock = new Object();
-    
-    /**
-     * Initialize SCRFD detector using ResourcePathUtils.
-     * Should be called once at application startup from a service with ResourcePathUtils.
-     */
-    public static void initializeScrfd(String modelPath) {
-        if (scrfd == null) {
-            synchronized (scrfdLock) {
-                if (scrfd == null) {
-                    if (modelPath != null && !modelPath.isEmpty()) {
-                        File f = new File(modelPath);
-                        if (f.exists()) {
-                            System.out.println("[SCRFD INIT] Loading SCRFD model from: " + modelPath);
-                            OnnxFaceDetector d = new OnnxFaceDetector(modelPath);
-                            if (d.isLoaded()) {
-                                scrfd = d;
-                                System.out.println("[SCRFD INIT] Successfully loaded SCRFD detector");
-                            } else {
-                                System.out.println("[SCRFD INIT] Failed to load SCRFD detector (model not loaded)");
-                            }
-                        } else {
-                            System.out.println("[SCRFD INIT] SCRFD model file not found at: " + modelPath);
-                        }
-                    } else {
-                        System.out.println("[SCRFD INIT] No SCRFD model path provided");
-                    }
-                }
-            }
-        }
-    }
-    
-    private static OnnxFaceDetector getScrfd() {
-        return scrfd;
+    private FaceDetectionUtils() {
+        // Utility class
     }
 
     public static Mat getFaceFromImageBytes(byte[] imageBytes, CascadeClassifier faceDetector) {
-        FaceDetectionResult result = getFaceFromImageBytesWithBbox(imageBytes, faceDetector);
-        return result != null ? result.getFaceMat() : null;
+        FaceExtractionOutcome outcome = getFaceFromImageBytesWithBbox(imageBytes, faceDetector);
+        if (outcome.isSuccess()) {
+            FaceDetectionResult result = outcome.getDetectionResultOrNull();
+            if (result != null) {
+                return result.getFaceMat();
+            }
+        }
+        return null;
     }
 
-    public static FaceDetectionResult getFaceFromImageBytesWithBbox(byte[] imageBytes, CascadeClassifier faceDetector) {
-        System.out.println("\n[FACE DETECTION] ========================================");
-        
-        // Convert bytes to Mat
+    public static FaceExtractionOutcome getFaceFromImageBytesWithBbox(byte[] imageBytes, CascadeClassifier faceDetector) {
+        logger.info("[FACE DETECTION] ========================================");
+
         Mat image = Imgcodecs.imdecode(new MatOfByte(imageBytes), Imgcodecs.IMREAD_COLOR);
         if (image.empty() || image.width() == 0 || image.height() == 0) {
-            System.out.println("[FACE DETECTION] Failed: Could not decode image");
-            return null;
+            logger.warn("[FACE DETECTION] Failed: Could not decode image");
+            logger.info("[FACE DETECTION] ========================================");
+            return FaceExtractionOutcome.failure(
+                    FaceExtractionError.IMAGE_DECODE_FAILED,
+                    "Unable to decode the uploaded image.");
         }
-        System.out.println("[FACE DETECTION] Image decoded: " + image.width() + "x" + image.height());
+
+        logger.debug("[FACE DETECTION] Image decoded: {}x{}", image.width(), image.height());
+
         int originalWidth = image.width();
         int originalHeight = image.height();
 
@@ -88,7 +74,6 @@ public class FaceDetectionUtils {
                     new org.opencv.core.Point(rectangle.getX() * originalWidth, rectangle.getY() * originalHeight),
                     new org.opencv.core.Point(rectangle.getX() * originalWidth + rectangle.getWidth() * originalWidth, rectangle.getY() * originalHeight + rectangle.getHeight() * originalHeight)
                 );
-
                 
                 int centerX = faceRect.x + faceRect.width / 2;
                 int centerY = faceRect.y + faceRect.height / 2;
@@ -117,15 +102,21 @@ public class FaceDetectionUtils {
                 Imgproc.resize(croppedFace, resized, new Size(112,112), 0, 0, interp);
 
                 System.out.println("[FACE DETECTION] ========================================\n");
-                return new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight);
+                return FaceExtractionOutcome.success(new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight), "Face extracted successfully.");
 
             } else if (numObjects == 0) {
                     System.out.println("[FACE DETECTION] FAILED: No face detected");
                     System.out.println("[FACE DETECTION] ========================================\n");
-                    return null;
+                    return FaceExtractionOutcome.failure(
+                    FaceExtractionError.NO_FACE_DETECTED,
+                    "No face was detected in the provided image.",
+                    0);
             } else {
                 System.out.println("[FACE DETECTION] FAILED: Multiple faces detected (" + numObjects + ")");
-                return null;
+                return FaceExtractionOutcome.failure(
+                    FaceExtractionError.MULTIPLE_FACES_DETECTED,
+                    "Multiple faces detected. Please upload an image with only one face.",
+                    numObjects);
             }
     
         } catch (Exception e) {
@@ -137,8 +128,7 @@ public class FaceDetectionUtils {
         System.out.println("[FACE DETECTION] Falling back to Haar Cascade detector...");
         Mat gray = new Mat();
         Imgproc.cvtColor(image, gray, Imgproc.COLOR_BGR2GRAY);
-        
-        // Apply CLAHE for better contrast
+
         try {
             CLAHE clahe = Imgproc.createCLAHE(2.0, new Size(8, 8));
             Mat grayClahe = new Mat();
@@ -151,83 +141,92 @@ public class FaceDetectionUtils {
 
         MatOfRect faceDetections = new MatOfRect();
         faceDetector.detectMultiScale(
-            gray, faceDetections, 1.1, 3, 0, new Size(30, 30), new Size()
-        );
+                gray, faceDetections, 1.1, 3, 0, new Size(30, 30), new Size());
         Rect[] faces = faceDetections.toArray();
-        
-        System.out.println("[FACE DETECTION] Haar detected " + faces.length + " face(s)");
+
+        logger.debug("[FACE DETECTION] Haar detected {} face(s)", faces.length);
+
         if (faces.length == 0) {
-            System.out.println("[FACE DETECTION] FAILED: No face detected");
-            System.out.println("[FACE DETECTION] ========================================\n");
-            return null;
+            logger.warn("[FACE DETECTION] FAILED: No face detected");
+            logger.info("[FACE DETECTION] ========================================");
+            return FaceExtractionOutcome.failure(
+                    FaceExtractionError.NO_FACE_DETECTED,
+                    "No face was detected in the provided image.",
+                    0);
         }
-        
+
         if (faces.length > 1) {
-            System.out.println("[FACE DETECTION] FAILED: Multiple faces detected (" + faces.length + ")");
-            System.out.println("[FACE DETECTION] ========================================\n");
-            return null; // Reject multi-face
+            logger.warn("[FACE DETECTION] FAILED: Multiple faces detected ({})", faces.length);
+            logger.info("[FACE DETECTION] ========================================");
+            return FaceExtractionOutcome.failure(
+                    FaceExtractionError.MULTIPLE_FACES_DETECTED,
+                    "Multiple faces detected. Please upload an image with only one face.",
+                    faces.length);
         }
-        
-        // Use the single detected face
+
         Rect faceRect = faces[0];
-        
-        System.out.println("[FACE DETECTION] Selected largest face: " + 
-                         faceRect.width + "x" + faceRect.height + " at (" + faceRect.x + "," + faceRect.y + ")");
-        
-        // Expand to square with margin
+        logger.debug("[FACE DETECTION] Selected face: {}x{} at ({},{})",
+                faceRect.width, faceRect.height, faceRect.x, faceRect.y);
+
         int centerX = faceRect.x + faceRect.width / 2;
         int centerY = faceRect.y + faceRect.height / 2;
         int maxSide = Math.max(faceRect.width, faceRect.height);
         int sideWithMargin = (int) Math.round(maxSide * 1.2);
-        
-        int x = centerX - sideWithMargin / 2;
-        int y = centerY - sideWithMargin / 2;
-        x = Math.max(0, Math.min(x, image.width() - 1));
-        y = Math.max(0, Math.min(y, image.height() - 1));
+
+        int x = Math.max(0, Math.min(centerX - sideWithMargin / 2, image.width() - 1));
+        int y = Math.max(0, Math.min(centerY - sideWithMargin / 2, image.height() - 1));
         int w = Math.min(sideWithMargin, image.width() - x);
         int h = Math.min(sideWithMargin, image.height() - y);
         int side = Math.min(w, h);
-        
+
         Rect squareRoi = new Rect(x, y, side, side);
         Mat face = new Mat(image, squareRoi);
-        
-        // More lenient quality checks for Haar (less precise alignment)
-        boolean ok = QualityUtils.passesQuality(face, 80, 25.0, 15.0, 240.0);
-        if (!ok) {
-            System.out.println("[FACE DETECTION] FAILED: Face rejected by quality check");
-            System.out.println("[FACE DETECTION] ========================================\n");
-            return null;
+        try {
+            boolean passedQuality = QualityUtils.passesQuality(face, 80, 25.0, 15.0, 240.0);
+            if (!passedQuality) {
+                logger.warn("[FACE DETECTION] FAILED: Face rejected by quality check");
+                logger.info("[FACE DETECTION] ========================================");
+                return FaceExtractionOutcome.failure(
+                        FaceExtractionError.FACE_QUALITY_REJECTED,
+                        "Face failed quality checks (lighting, focus, or occlusion).");
+            }
+
+            Mat resized = new Mat();
+            int interpolation = (face.width() >= 112 || face.height() >= 112)
+                    ? Imgproc.INTER_AREA
+                    : Imgproc.INTER_CUBIC;
+            Imgproc.resize(face, resized, new Size(112, 112), 0, 0, interpolation);
+
+            logger.info("[FACE DETECTION] SUCCESS: Haar with crop+resize to 112x112");
+            logger.info("[FACE DETECTION] ========================================");
+            return FaceExtractionOutcome.success(
+                    new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight),
+                    "Face extracted successfully.");
+        } finally {
+            face.release();
         }
-        
-        Mat resized = new Mat();
-        int interp = (face.width() >= 112 || face.height() >= 112) ? Imgproc.INTER_AREA : Imgproc.INTER_CUBIC;
-        Imgproc.resize(face, resized, new Size(112,112), 0, 0, interp);
-        
-        System.out.println("[FACE DETECTION] SUCCESS: Haar with crop+resize to 112x112");
-        System.out.println("[FACE DETECTION] ========================================\n");
-        return new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight);
     }
 
-    /**
-     * Detect all faces in an image and return aligned face regions for each.
-     * This is the multi-face version for parallel recognition processing.
-     */
-    public static List<FaceDetectionResult> getAllFacesWithBbox(byte[] imageBytes, CascadeClassifier faceDetector) {
-        List<FaceDetectionResult> results = new java.util.ArrayList<>();
-        
-        System.out.println("\n[MULTI-FACE DETECTION] ========================================");
-        
-        // Convert bytes to Mat
+    public static List<FaceExtractionOutcome> getAllFacesWithBbox(byte[] imageBytes, CascadeClassifier faceDetector) {
+        List<FaceExtractionOutcome> results = new ArrayList<>();
+
+        logger.info("[MULTI-FACE DETECTION] ========================================");
+
         Mat image = Imgcodecs.imdecode(new MatOfByte(imageBytes), Imgcodecs.IMREAD_COLOR);
         if (image.empty() || image.width() == 0 || image.height() == 0) {
-            System.out.println("[MULTI-FACE DETECTION] Failed: Could not decode image");
+            logger.warn("[MULTI-FACE DETECTION] Failed: Could not decode image");
+            results.add(FaceExtractionOutcome.failure(
+                    FaceExtractionError.IMAGE_DECODE_FAILED,
+                    "Unable to decode the uploaded image."));
             return results;
         }
-        System.out.println("[MULTI-FACE DETECTION] Image decoded: " + image.width() + "x" + image.height());
+
+        logger.debug("[MULTI-FACE DETECTION] Image decoded: {}x{}", image.width(), image.height());
+
         int originalWidth = image.width();
         int originalHeight = image.height();
 
-        // retina face detection!!! (multi)
+        // light face detection!!! (multi)
         try {
             DetectedObjects detectedObjects = LightFaceDetection.predict(image);
             int numObjects = detectedObjects.getNumberOfObjects();
@@ -266,8 +265,12 @@ public class FaceDetectionUtils {
                 Imgproc.resize(croppedFace, resized, new Size(112,112), 0, 0, interp);
 
                 System.out.println("[FACE DETECTION] ========================================\n");
-                results.add(new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight));
+                results.add(FaceExtractionOutcome.success(new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight), "Face extracted successfully."));
             }
+
+            logger.info("[MULTI-FACE DETECTION] Successfully processed {} face(s)", results.size());
+            logger.info("[MULTI-FACE DETECTION] ========================================");
+
             return results;
     
         } catch (Exception e) {
@@ -278,8 +281,7 @@ public class FaceDetectionUtils {
         System.out.println("[MULTI-FACE DETECTION] Falling back to Haar Cascade detector...");
         Mat gray = new Mat();
         Imgproc.cvtColor(image, gray, Imgproc.COLOR_BGR2GRAY);
-        
-        // Apply CLAHE for better contrast
+
         try {
             CLAHE clahe = Imgproc.createCLAHE(2.0, new Size(8, 8));
             Mat grayClahe = new Mat();
@@ -292,43 +294,44 @@ public class FaceDetectionUtils {
 
         MatOfRect faceDetections = new MatOfRect();
         faceDetector.detectMultiScale(
-            gray, faceDetections, 1.1, 3, 0, new Size(30, 30), new Size()
-        );
+                gray, faceDetections, 1.1, 3, 0, new Size(30, 30), new Size());
         Rect[] faces = faceDetections.toArray();
-        
-        System.out.println("[MULTI-FACE DETECTION] Haar detected " + faces.length + " face(s)");
-        
+
+        logger.debug("[MULTI-FACE DETECTION] Haar detected {} face(s)", faces.length);
+
         for (Rect faceRect : faces) {
-            // Expand to square with margin
             int centerX = faceRect.x + faceRect.width / 2;
             int centerY = faceRect.y + faceRect.height / 2;
             int maxSide = Math.max(faceRect.width, faceRect.height);
             int sideWithMargin = (int) Math.round(maxSide * 1.2);
-            
-            int x = centerX - sideWithMargin / 2;
-            int y = centerY - sideWithMargin / 2;
-            x = Math.max(0, Math.min(x, image.width() - 1));
-            y = Math.max(0, Math.min(y, image.height() - 1));
+
+            int x = Math.max(0, Math.min(centerX - sideWithMargin / 2, image.width() - 1));
+            int y = Math.max(0, Math.min(centerY - sideWithMargin / 2, image.height() - 1));
             int w = Math.min(sideWithMargin, image.width() - x);
             int h = Math.min(sideWithMargin, image.height() - y);
             int side = Math.min(w, h);
-            
+
             Rect squareRoi = new Rect(x, y, side, side);
             Mat face = new Mat(image, squareRoi);
-            
-            // Quality checks for Haar
-            boolean ok = QualityUtils.passesQuality(face, 80, 25.0, 15.0, 240.0);
-            if (ok) {
-                Mat resized = new Mat();
-                int interp = (face.width() >= 112 || face.height() >= 112) ? Imgproc.INTER_AREA : Imgproc.INTER_CUBIC;
-                Imgproc.resize(face, resized, new Size(112,112), 0, 0, interp);
-                results.add(new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight));
+            try {
+                boolean passedQuality = QualityUtils.passesQuality(face, 80, 25.0, 15.0, 240.0);
+                if (passedQuality) {
+                    Mat resized = new Mat();
+                    int interpolation = (face.width() >= 112 || face.height() >= 112)
+                            ? Imgproc.INTER_AREA
+                            : Imgproc.INTER_CUBIC;
+                    Imgproc.resize(face, resized, new Size(112, 112), 0, 0, interpolation);
+                    results.add(FaceExtractionOutcome.success(new FaceDetectionResult(resized, faceRect, originalWidth, originalHeight), "Face extracted successfully."));
+                } else {
+                    logger.debug("[MULTI-FACE DETECTION] Discarded face due to quality check failure");
+                }
+            } finally {
+                face.release();
             }
-            face.release();
         }
-        
-        System.out.println("[MULTI-FACE DETECTION] Successfully processed " + results.size() + " face(s)");
-        System.out.println("[MULTI-FACE DETECTION] ========================================\n");
+
+        logger.info("[MULTI-FACE DETECTION] Successfully processed {} face(s)", results.size());
+        logger.info("[MULTI-FACE DETECTION] ========================================");
         return results;
     }
 }

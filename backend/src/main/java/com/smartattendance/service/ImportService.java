@@ -18,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.smartattendance.dto.request.user.CreateStudentRequest;
 import com.smartattendance.dto.response.user.StudentDTO;
+import com.smartattendance.dto.response.user.StudentFaceProcessingResult;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -62,8 +63,14 @@ public class ImportService {
 
             for (CreateStudentRequest studentRequest : students) {
                 try {
-                    StudentDTO student = studentService.createStudent(studentRequest);
-                    importedStudents.add(student);
+                    StudentFaceProcessingResult result = studentService.createStudent(studentRequest);
+                    importedStudents.add(result.getStudent());
+                    if (result.getFaceProcessingSummary() != null && result.getFaceProcessingSummary().hasFailures()) {
+                        logger.warn("Imported student {} {} with {} rejected face image(s)",
+                                studentRequest.getFirstName(),
+                                studentRequest.getLastName(),
+                                result.getFaceProcessingSummary().getRejectedCount());
+                    }
                 } catch (Exception e) {
                     String errorMsg = String.format("Failed to import %s %s: %s",
                             studentRequest.getFirstName(),
