@@ -721,7 +721,9 @@ function Attendance() {
     // Transform backend data to match frontend expectations
     const transformedData = data.map(section => ({
       ...section,
-      section_code: section.sectionCode, // Map camelCase to snake_case
+      section_code: section.sectionCode,
+      start_time: section.startTime,      
+      end_time: section.endTime,
       courses: section.course ? {
         code: section.course.code,
         title: section.course.title
