@@ -818,30 +818,6 @@ function Students() {
     }
   }
 
-  const handleDeleteStudent = async (student) => {
-    if (!confirm(`Are you sure you want to delete ${student.first_name} ${student.last_name} (${student.id})? This action cannot be undone.`)) {
-      return
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/students/${student.id}`, {
-        method: 'DELETE'
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || 'Failed to delete student')
-      }
-
-      await fetchStudents()
-      closeModal()
-      alert('Student deleted successfully')
-    } catch (error) {
-      console.error('Error deleting student:', error)
-      alert(error.message || 'Failed to delete student')
-    }
-  }
-
   const handleEditStudent = async (student) => {
     // Fetch full student data for editing
     try {
@@ -1026,15 +1002,6 @@ function Students() {
                       >
                         Edit
                       </button>
-                      {userRole === "admin" && (
-                        <button
-                          onClick={() => handleDeleteStudent(student)}
-                          className="btn btn-small btn-action"
-                        >
-                          Delete
-                        </button>
-                      )}
-
                     </div>
                   </td>
                 </tr>
