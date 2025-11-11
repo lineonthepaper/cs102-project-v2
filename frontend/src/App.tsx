@@ -12,7 +12,7 @@ import Attendance from './Attendance'
 import SectionAttendance from './SectionAttendance'
 import Dashboard from './Dashboard'
 import './styles.css'
-import Register from './Register'
+// import Register from './Register'
 
 
 function ProtectedRoute({
