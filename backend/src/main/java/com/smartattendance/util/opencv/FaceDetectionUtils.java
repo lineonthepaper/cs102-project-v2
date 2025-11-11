@@ -235,7 +235,7 @@ public class FaceDetectionUtils {
             System.out.println("[FACE DETECTION] LightFace detected " + numObjects + " face(s)");
             
             for (int i = 0; i < numObjects; i++) {
-                DetectedObject face = detectedObjects.item(0);
+                DetectedObject face = detectedObjects.item(i);
                 BoundingBox bbox = face.getBoundingBox();
                 Rectangle rectangle = bbox.getBounds();
                 Rect faceRect = new Rect(
