@@ -2,6 +2,13 @@ package com.smartattendance.service;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +29,10 @@ public class ExportService {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Singapore");
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     public byte[] exportSectionAsXLSX(ExportAsXLSXRequest request) {
 
@@ -74,10 +85,11 @@ public class ExportService {
                 "Course Section",
                 "Year",
                 "Semester",
-                "Session",
+                "Session Date",
                 "Student ID",
                 "Name",
                 "Status",
+                "Check-in Date",
                 "Check-in Time",
                 "Notes",
                 "Marking Method",
@@ -98,11 +110,12 @@ public class ExportService {
                     dataRow.get("section_code").toString(),
                     dataRow.get("year").toString(),
                     dataRow.get("semester").toString(),
-                    dataRow.get("session_date").toString(),
+                    formatSessionDate(dataRow.get("session_date")),
                     dataRow.get("user_id").toString(),
                     dataRow.get("first_name") + " " + dataRow.get("last_name"),
                     dataRow.get("status").toString(),
-                    dataRow.get("checkin_time") != null ? dataRow.get("checkin_time").toString() : "",
+                    formatCheckinDate(dataRow.get("checkin_time")),
+                    formatCheckinTime(dataRow.get("checkin_time")),
                     dataRow.get("notes") != null ? dataRow.get("notes").toString() : "",
                     Boolean.parseBoolean(dataRow.get("is_automatic").toString()) ? "Automatic" : "Manual",
                     Double.parseDouble(dataRow.get("confidence_level").toString()) >= 0
@@ -244,21 +257,106 @@ public class ExportService {
         row.createCell(0).setCellValue(dataRow.get("section_code").toString());
         row.createCell(1).setCellValue(dataRow.get("year").toString());
         row.createCell(2).setCellValue(dataRow.get("semester").toString());
-        row.createCell(3).setCellValue(dataRow.get("session_date").toString());
+        row.createCell(3).setCellValue(formatSessionDate(dataRow.get("session_date")));
         row.createCell(4).setCellValue(dataRow.get("user_id").toString());
         row.createCell(5).setCellValue(dataRow.get("first_name") + " " + dataRow.get("last_name"));
         row.createCell(6).setCellValue(dataRow.get("status").toString());
-        row.createCell(7).setCellValue(
-                dataRow.get("checkin_time") != null ? dataRow.get("checkin_time").toString() : "");
-        row.createCell(8).setCellValue(dataRow.get("notes") != null ? dataRow.get("notes").toString() : "");
-        row.createCell(9).setCellValue(
+        row.createCell(7).setCellValue(formatCheckinDate(dataRow.get("checkin_time")));
+        row.createCell(8).setCellValue(formatCheckinTime(dataRow.get("checkin_time")));
+        row.createCell(9).setCellValue(dataRow.get("notes") != null ? dataRow.get("notes").toString() : "");
+        row.createCell(10).setCellValue(
                 Boolean.parseBoolean(dataRow.get("is_automatic").toString()) ? "Automatic" : "Manual");
-        row.createCell(10)
+        row.createCell(11)
                 .setCellValue(Double.parseDouble(dataRow.get("confidence_level").toString()) >= 0
                         ? dataRow.get("confidence_level").toString()
                         : "N/A");
 
         sheetEntry.setCurrentRowIndex(currentRowIndex + 1);
+    }
+
+    private String formatCheckinDate(Object value) {
+        LocalDateTime dateTime = toLocalDateTime(value);
+        if (dateTime == null) {
+            return "";
+        }
+        LocalDateTime adjusted = dateTime.plusHours(8);
+        return DATE_FORMAT.format(adjusted.toLocalDate());
+    }
+
+    private String formatCheckinTime(Object value) {
+        LocalDateTime dateTime = toLocalDateTime(value);
+        if (dateTime == null) {
+            return "";
+        }
+        LocalDateTime adjusted = dateTime.plusHours(8);
+        return TIME_FORMAT.format(adjusted.toLocalTime());
+    }
+
+    private String formatSessionDate(Object value) {
+        if (value == null) {
+            return "";
+        }
+
+        if (value instanceof java.sql.Date sqlDate) {
+            return DATE_FORMAT.format(sqlDate.toLocalDate());
+        }
+        if (value instanceof LocalDate localDate) {
+            return DATE_FORMAT.format(localDate);
+        }
+        if (value instanceof Timestamp timestamp) {
+            return DATE_FORMAT.format(timestamp.toLocalDateTime().toLocalDate());
+        }
+
+        String raw = value.toString();
+        if (raw.contains("T")) {
+            return raw.substring(0, raw.indexOf('T'));
+        }
+        if (raw.contains(" ")) {
+            return raw.substring(0, raw.indexOf(' '));
+        }
+        return raw;
+    }
+
+    private LocalDateTime toLocalDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+
+        if (value instanceof OffsetDateTime offsetDateTime) {
+            return offsetDateTime.atZoneSameInstant(DEFAULT_ZONE).toLocalDateTime();
+        }
+
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toInstant().atZone(DEFAULT_ZONE).toLocalDateTime();
+        }
+
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime;
+        }
+
+        if (value instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate().atStartOfDay();
+        }
+
+        String raw = value.toString().trim();
+        if (raw.isEmpty()) {
+            return null;
+        }
+
+        try {
+            OffsetDateTime parsedOffset = OffsetDateTime.parse(raw);
+            return parsedOffset.atZoneSameInstant(DEFAULT_ZONE).toLocalDateTime();
+        } catch (DateTimeParseException ignored) {
+        }
+
+        try {
+            // Handle formats like "2025-10-07 08:55:00"
+            String sanitized = raw.contains("T") ? raw : raw.replace(' ', 'T');
+            return LocalDateTime.parse(sanitized);
+        } catch (DateTimeParseException ignored) {
+        }
+
+        return null;
     }
 
     private Sheet createNewSheet(Workbook workbook, String sheetName) {

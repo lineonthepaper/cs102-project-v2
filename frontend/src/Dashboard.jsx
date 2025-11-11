@@ -1,7 +1,8 @@
 import { useRole } from "./role";
 import { useAuth } from "./AuthContext";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import ExportModal from "./ExportModal";
 
 function Dashboard() {
     const navigate = useNavigate();
@@ -14,79 +15,6 @@ function Dashboard() {
 
     // import/export states
     const [showExportModal, setShowExportModal] = useState(false);
-    const [sectionList, setSectionList] = useState([]);
-    const [sectionFilter, setSectionFilter] = useState('all');
-    const [yearFilter, setYearFilter] = useState('all');
-    const [semesterFilter, setSemesterFilter] = useState('all');
-    const yearOptions = [2025, 2026, 2027, 2028, 2029, 2030]
-    const semesterOptions = [1, 2];
-
-        // import and export stuff
-
-    const downloadReportAsCSV = async () => {
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/export/export-csv`,
-                {
-                    method: "POST",
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        userId: user.user.id,
-                        sectionCode: sectionFilter,
-                        year: yearFilter,
-                        semester: semesterFilter,
-                        role: userRole
-                    })
-                }
-            );
-
-            const blob = await response.blob();
-
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "sectionReport.csv";
-            a.click();
-            window.URL.revokeObjectURL(url);
-        } catch (error) {
-            console.error("Download failed:", error);
-            alert("Failed to download report");
-        }
-    };
-
-    const downloadReportAsXLSX = async () => {
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/export/export-xlsx`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        userId: user.user.id,
-                        sectionCode: sectionFilter,
-                        year: yearFilter,
-                        semester: semesterFilter,
-                        role: userRole
-                    })
-                }
-            );
-
-            const blob = await response.blob();
-
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "sectionReport.xlsx";
-            a.click();
-            window.URL.revokeObjectURL(url);
-        } catch (error) {
-            console.error("Download failed:", error);
-            alert("Failed to download report");
-        }
-    };
-
     const handleImportStudents = async (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -133,45 +61,6 @@ function Dashboard() {
     const triggerFileInput = () => {
         document.getElementById('csvFileInput').click();
     };
-
-    const fetchSections = async () => {
-        const response = await fetch(`${API_BASE_URL}/api/sections`)
-        if (!response.ok) throw new Error('Failed to fetch sections')
-
-        const data = await response.json()
-        // Transform backend data to match frontend expectations
-        const transformedData = data.map(section => ({
-            ...section,
-            section_code: section.sectionCode, // Map camelCase to snake_case
-            courses: section.course ? {
-                code: section.course.code,
-                title: section.course.title
-            } : null
-        }))
-
-        // Sort by year and semester descending
-        transformedData.sort((a, b) => {
-            if (b.year !== a.year) return b.year - a.year
-            return b.semester - a.semester
-        })
-
-        setSectionList(transformedData)
-    };
-
-    const uniqueSections = useMemo(() => {
-        const seen = new Set()
-        return sectionList.filter(section => {
-            if (seen.has(section.section_code)) {
-                return false
-            }
-            seen.add(section.section_code)
-            return true
-        })
-    }, [sectionList])
-
-    useEffect(() => {
-        fetchSections()
-    }, [])
 
     // logout handler
     const handleLogout = async () => {
@@ -279,88 +168,20 @@ function Dashboard() {
 
                 {canExport && (
                     <div className="card">
-                        <h3>Export Reports</h3>
+                        <h3>Export Data</h3>
                         <p>Download attendance and enrollment reports for your sections</p>
                         <button onClick={() => { setShowExportModal(true) }} className="btn btn-secondary">
-                            Export Report
+                            Export Data
                         </button>
                     </div>
                 )}
 
-                {/* Export Modal */}
-                {showExportModal && (
-                    <div className="modal-overlay" onClick={() => { setShowExportModal(false) }}>
-                        <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '1200px', width: '55%', maxHeight: '90vh' }}>
-                            <div className="modal-header">
-                                <div>
-                                    <h2>Export Course Data</h2>
-                                    <p style={{ color: '#6b7280', margin: '0.5rem 0 0 0', fontSize: '0.875rem' }}>
-                                        Export attendance and student data for selected sections
-                                    </p>
-                                </div>
-                                <div className="modal-header-actions">
-                                    <button onClick={() => { setShowExportModal(false) }} className="close-button">
-                                        ✕
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="modal-body">
-                                <div style={{ display: 'flex', marginBottom: '1.5rem', justifyContent: 'space-between' }}>
-                                    <div className="filter-block" style={{ 'flex-grow': 1, 'margin-right': '1rem' }}>
-                                        <label className="filter-label" htmlFor="section-filter">Section</label>
-                                        <select
-                                            id="section-filter"
-                                            value={sectionFilter}
-                                            onChange={(e) => setSectionFilter(e.target.value)}
-                                            className="filter-select"
-                                        >
-                                            <option value="all">All Sections</option>
-                                            {uniqueSections.map(section => (
-                                                <option key={section.id} value={section.section_code}>
-                                                    {section.section_code}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div className="filter-block" style={{ flexGrow: 1, marginRight: '1rem' }}>
-                                        <label className="filter-label" htmlFor="year-filter">Year</label>
-                                        <select
-                                            id="year-filter"
-                                            value={yearFilter}
-                                            onChange={(e) => setYearFilter(e.target.value)}
-                                            className="filter-select"
-                                        >
-                                            <option value="all">All Years</option>
-                                            {yearOptions.map(year => (
-                                                <option key={year} value={year}>{year}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div className="filter-block" style={{ flexGrow: 1 }}>
-                                        <label className="filter-label" htmlFor="semester-filter">Semester</label>
-                                        <select
-                                            id="semester-filter"
-                                            value={semesterFilter}
-                                            onChange={(e) => setSemesterFilter(e.target.value)}
-                                            className="filter-select"
-                                        >
-                                            <option value="all">All Semesters</option>
-                                            {semesterOptions.map(sem => (
-                                                <option key={sem} value={sem}>Semester {sem}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-                                <div>
-                                    <button className="btn btn-primary-small" onClick={downloadReportAsCSV}>Export as CSV</button>
-                                    <button className="btn btn-primary-small" style={{ marginLeft: '1rem' }} onClick={downloadReportAsXLSX}>Export as XLSX</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <ExportModal
+                    isOpen={showExportModal}
+                    onClose={() => setShowExportModal(false)}
+                    userId={user.user.id}
+                    userRole={userRole}
+                />
             </div>
         </div>
     );

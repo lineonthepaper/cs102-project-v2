@@ -1247,6 +1247,57 @@ body {
   overflow: hidden;
 }
 
+.manage-modal.export-modal {
+  max-width: 1050px;
+}
+
+.export-modal .manage-modal-body {
+  gap: 1.25rem;
+}
+
+.export-section-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.export-section-table .ta-no-sections {
+  padding: 2rem;
+}
+
+.export-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+}
+
+.data-table tbody tr.clickable-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.data-table tbody tr.selected-row {
+  background: #f3f4f6;
+}
+
+.data-table tbody tr.selected-row:hover {
+  background: #e5e7eb;
+}
+
+.checkbox-cell {
+  width: 48px;
+}
+
+.checkbox-cell input {
+  width: 16px;
+  height: 16px;
+}
+
 .manage-modal-body {
   flex: 1 1 auto;
   display: flex;
