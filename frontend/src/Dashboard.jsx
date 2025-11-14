@@ -16,53 +16,6 @@ function Dashboard() {
 
     // import/export states
     const [showExportModal, setShowExportModal] = useState(false);
-    const [showImportSummary, setShowImportSummary] = useState(false);
-    const [importSummary, setImportSummary] = useState(null);
-    const [importing, setImporting] = useState(false);
-    const handleImportStudents = async (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        if (!file.name.toLowerCase().endsWith('.zip')) {
-            alert('Please upload a ZIP file containing a CSV and student image folders');
-            event.target.value = '';
-            return;
-        }
-
-        try {
-            setImporting(true);
-            setImportSummary(null);
-            setShowImportSummary(false);
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const response = await fetch('http://localhost:8080/api/students/import', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.message || 'Import failed');
-            }
-
-            setImportSummary(result);
-            setShowImportSummary(true);
-            event.target.value = '';
-
-        } catch (error) {
-            console.error("Import failed:", error);
-            alert(`Failed to import students: ${error.message}`);
-            event.target.value = '';
-        } finally {
-            setImporting(false);
-        }
-    };
-
-    const triggerFileInput = () => {
-        document.getElementById('csvFileInput').click();
-    };
 
     // logout handler
     const handleLogout = async () => {
@@ -110,7 +63,6 @@ function Dashboard() {
     }, [userRole, user]);
 
     const canExport = userRole === "instructor" || userRole === "teaching assistant";
-    const canImport = userRole === "admin" || userRole === "instructor";
 
     if (loading) {
         return <div className="loading">Loading sections...</div>
@@ -147,26 +99,7 @@ function Dashboard() {
                         >
                             Manage Section
                         </button>
-                    </div>
-                ))}
-                {canImport && (
-                    <div className="card">
-                        <h3>Import Students</h3>
-                        <p>Import student data and face images from a ZIP package</p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <input
-                                id="csvFileInput"
-                                type="file"
-                                accept=".zip"
-                                style={{ display: 'none' }}
-                                onChange={handleImportStudents}
-                            />
-                            <button onClick={triggerFileInput} className="btn btn-secondary" disabled={importing}>
-                                Import Students (ZIP)
-                            </button>
-                        </div>
-                    </div>
-                )}
+                    </div>                ))}
 
                 {canExport && (
                     <div className="card">
@@ -183,15 +116,6 @@ function Dashboard() {
                     onClose={() => setShowExportModal(false)}
                     userId={user.user.id}
                     userRole={userRole}
-                />
-
-                <ImportSummaryModal
-                    isOpen={showImportSummary}
-                    summary={importSummary}
-                    onClose={() => {
-                        setShowImportSummary(false);
-                        setImportSummary(null);
-                    }}
                 />
             </div>
         </div>
