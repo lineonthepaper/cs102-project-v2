@@ -18,7 +18,6 @@ public class FaceScanResponseDTO {
     private BoundingBoxDTO boundingBox;
     private List<FaceDetectionDTO> allDetections;
     private List<RecognizedStudentDTO> allStudents;
-    private double rawSimilarity;
     private double margin;
 
     public FaceScanResponseDTO() {}

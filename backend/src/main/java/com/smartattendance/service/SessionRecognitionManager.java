@@ -188,149 +188,6 @@ public class SessionRecognitionManager {
         }
     }
 
-    private static final class SimilarityCalibrator {
-
-        private final float impostorMean;
-        private final float logisticCenter;
-        private final float logisticScale;
-        private final float marginScale;
-
-        private SimilarityCalibrator(float impostorMean,
-                float logisticCenter,
-                float logisticScale,
-                float marginScale) {
-            this.impostorMean = impostorMean;
-            this.logisticCenter = logisticCenter;
-            this.logisticScale = logisticScale;
-            this.marginScale = marginScale;
-        }
-
-        static SimilarityCalibrator defaultCalibrator() {
-            // Calibrated to keep displayed confidence closer to observed accuracy (~70%)
-            return new SimilarityCalibrator(0.0f, 0.91f, 0.07f, 0.12f);
-        }
-
-        static SimilarityCalibrator compute(Map<String, List<float[]>> embeddingIndex) {
-            if (embeddingIndex == null || embeddingIndex.isEmpty()) {
-                return defaultCalibrator();
-            }
-
-            List<Float> positives = new ArrayList<>();
-            List<Float> negatives = new ArrayList<>();
-            List<Map.Entry<String, List<float[]>>> entries = new ArrayList<>(embeddingIndex.entrySet());
-
-            for (Map.Entry<String, List<float[]>> entry : entries) {
-                List<float[]> vectors = entry.getValue();
-                if (vectors == null || vectors.size() < 2) {
-                    continue;
-                }
-                for (int i = 0; i < vectors.size(); i++) {
-                    float[] vi = vectors.get(i);
-                    if (vi == null)
-                        continue;
-                    for (int j = i + 1; j < vectors.size(); j++) {
-                        float[] vj = vectors.get(j);
-                        if (vj == null)
-                            continue;
-                        positives.add(com.smartattendance.util.opencv.FaceRecognitionUtils.cosine(vi, vj));
-                    }
-                }
-            }
-
-            for (int i = 0; i < entries.size(); i++) {
-                List<float[]> left = entries.get(i).getValue();
-                if (left == null) {
-                    continue;
-                }
-                for (int j = i + 1; j < entries.size(); j++) {
-                    List<float[]> right = entries.get(j).getValue();
-                    if (right == null) {
-                        continue;
-                    }
-                    for (float[] a : left) {
-                        if (a == null)
-                            continue;
-                        for (float[] b : right) {
-                            if (b == null)
-                                continue;
-                            negatives.add(com.smartattendance.util.opencv.FaceRecognitionUtils.cosine(a, b));
-                        }
-                    }
-                }
-            }
-
-            if (positives.isEmpty() || negatives.isEmpty()) {
-                return defaultCalibrator();
-            }
-
-            float posMean = mean(positives);
-            float negMean = mean(negatives);
-            float posStd = std(positives, posMean);
-            float negStd = std(negatives, negMean);
-
-            float center = Math.max(0.88f, Math.min(0.97f, (posMean + negMean) / 2.0f));
-            float spread = Math.max(0.06f, posMean - negMean);
-            float scale = Math.max(0.07f, spread / 3.5f);
-            float marginScale = Math.max(0.12f,
-                    Math.min(0.25f, scale * 1.5f + 0.5f * (posStd + negStd)));
-
-            System.out.println(String.format("[CALIBRATION] impostor mean=%.3f (±%.3f), genuine mean=%.3f (±%.3f)",
-                    negMean, negStd, posMean, posStd));
-            System.out.println(String.format("[CALIBRATION] logistic center=%.3f, scale=%.3f, marginScale=%.3f",
-                    center, scale, marginScale));
-
-            return new SimilarityCalibrator(negMean, center, scale, marginScale);
-        }
-
-        float confidence(float cosine, float runnerUpCosine) {
-            float scale = logisticScale < 0.02f ? 0.02f : logisticScale;
-            float logistic = clamp01((float) (1.0 / (1.0 + Math.exp(-(cosine - logisticCenter) / scale))));
-            if (Float.isNaN(logistic)) {
-                logistic = 0.5f;
-            }
-
-            float marginConfidence = 1.0f;
-            if (!Float.isNaN(runnerUpCosine) && runnerUpCosine > -1.0f) {
-                float margin = Math.max(0.0f, cosine - runnerUpCosine);
-                marginConfidence = clamp01(margin / marginScale);
-            }
-
-            float blended = 0.75f * logistic + 0.25f * marginConfidence;
-            return clamp01(blended);
-        }
-
-        float getImpostorMean() {
-            return impostorMean;
-        }
-
-        private static float mean(List<Float> values) {
-            float sum = 0.0f;
-            for (float v : values) {
-                sum += v;
-            }
-            return sum / values.size();
-        }
-
-        private static float std(List<Float> values, float mean) {
-            if (values.size() <= 1) {
-                return 0.0f;
-            }
-            float accum = 0.0f;
-            for (float v : values) {
-                float diff = v - mean;
-                accum += diff * diff;
-            }
-            return (float) Math.sqrt(accum / (values.size() - 1));
-        }
-
-        private float clamp01(float value) {
-            if (Float.isNaN(value)) {
-                return 0.0f;
-            }
-            return Math.max(0.0f, Math.min(1.0f, value));
-        }
-    }
-
     private static final class SessionRecognitionContext {
 
         private final AttendanceSession session;
@@ -348,7 +205,6 @@ public class SessionRecognitionManager {
         private int scans = 0;
 
         private volatile Map<String, List<float[]>> embeddingIndex;
-        private SimilarityCalibrator calibrator;
 
         private SessionRecognitionContext(AttendanceSession session,
                 Map<String, StudentProfile> profiles,
@@ -361,7 +217,6 @@ public class SessionRecognitionManager {
             this.profiles = profiles;
             this.statuses = new ConcurrentHashMap<>(statuses);
             this.recognitionService = recognitionService;
-            this.calibrator = SimilarityCalibrator.defaultCalibrator();
             rebuildEmbeddingIndex();
             this.windowSize = Math.max(1, windowSize);
             this.requiredVotes = Math.max(1, requiredVotes);
@@ -371,7 +226,6 @@ public class SessionRecognitionManager {
         private void rebuildEmbeddingIndex() {
             this.embeddingIndex = profiles.values().stream()
                     .collect(Collectors.toMap(StudentProfile::getUserId, StudentProfile::getEmbeddings));
-            this.calibrator = SimilarityCalibrator.compute(this.embeddingIndex);
         }
 
         FaceScanResponseDTO match(byte[] imageBytes) {
@@ -505,10 +359,6 @@ public class SessionRecognitionManager {
 
                 float cosine = maxSimilarityById.getOrDefault(studentId, 0.0f);
                 float runnerUp = getRunnerUpSimilarity(studentId);
-                // SimilarityCalibrator activeCalibrator = (calibrator != null)
-                // ? calibrator
-                // : SimilarityCalibrator.defaultCalibrator();
-                // float confidence = activeCalibrator.confidence(cosine, runnerUp);
                 float confidence = cosine;
 
                 System.out
@@ -532,7 +382,7 @@ public class SessionRecognitionManager {
                         bbox,
                         originalWidth,
                         originalHeight);
-                dto.setRawSimilarity(cosine);
+                dto.setSimilarity(cosine);
 
                 float marginValue = (!Float.isNaN(runnerUp) && runnerUp > -1.0f)
                         ? (cosine - runnerUp)
@@ -563,7 +413,6 @@ public class SessionRecognitionManager {
 
             if (!voteCounts.isEmpty() && !maxSimilarityById.isEmpty()) {
                 return FaceScanResponseDTOBuilder.scanningWithAllDetections(
-                        null,
                         profiles, maxSimilarityById, boundingBoxByCandidate,
                         originalWidthByCandidate, originalHeightByCandidate);
             }
@@ -679,13 +528,11 @@ public class SessionRecognitionManager {
             dto.setMessage(message);
             dto.setAlreadyMarked(false);
             dto.setSimilarity(0.0);
-            dto.setRawSimilarity(0.0);
             dto.setMargin(0.0);
             return dto;
         }
 
-        static FaceScanResponseDTO scanningWithAllDetections(SimilarityCalibrator calibrator,
-                Map<String, StudentProfile> profiles,
+        static FaceScanResponseDTO scanningWithAllDetections(Map<String, StudentProfile> profiles,
                 Map<String, Float> maxSimilarityById,
                 Map<String, org.opencv.core.Rect> boundingBoxByCandidate,
                 Map<String, Integer> originalWidthByCandidate,
@@ -695,7 +542,7 @@ public class SessionRecognitionManager {
             // Create detection entry for each candidate that has votes
             for (Map.Entry<String, Float> entry : maxSimilarityById.entrySet()) {
                 String candidateId = entry.getKey();
-                double rawSimilarity = entry.getValue();
+                double similarity = entry.getValue();
 
                 org.opencv.core.Rect bbox = boundingBoxByCandidate.get(candidateId);
                 if (bbox == null)
@@ -718,7 +565,7 @@ public class SessionRecognitionManager {
                 studentDTO.setLastName(profile.getLastName());
                 studentDTO.setEmail(profile.getEmail());
 
-                detections.add(new FaceDetectionDTO(bboxDTO, studentDTO, rawSimilarity, rawSimilarity));
+                detections.add(new FaceDetectionDTO(bboxDTO, studentDTO, similarity));
             }
 
             FaceScanResponseDTO dto = new FaceScanResponseDTO();
@@ -732,12 +579,12 @@ public class SessionRecognitionManager {
             // compatibility
             if (!detections.isEmpty()) {
                 FaceDetectionDTO leader = detections.stream()
-                        .max((a, b) -> Double.compare(a.getRawSimilarity(), b.getRawSimilarity()))
+                        .max((a, b) -> Double.compare(a.getSimilarity(), b.getSimilarity()))
                         .orElse(detections.get(0));
                 dto.setBoundingBox(leader.getBoundingBox());
                 dto.setStudent(leader.getStudent());
                 dto.setSimilarity(leader.getSimilarity());
-                dto.setRawSimilarity(leader.getRawSimilarity());
+                dto.setSimilarity(leader.getSimilarity());
                 dto.setMargin(0.0);
             }
 
@@ -762,7 +609,6 @@ public class SessionRecognitionManager {
             dto.setMatched(true);
             dto.setAlreadyMarked(false);
             dto.setSimilarity(similarity);
-            dto.setRawSimilarity(similarity);
             dto.setMargin(0.0);
             dto.setRecommendedStatus(recommendedStatus != null ? recommendedStatus.getCode() : null);
             dto.setRecommendedCheckInTime(checkInTime);

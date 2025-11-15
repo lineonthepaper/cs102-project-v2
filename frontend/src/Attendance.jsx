@@ -449,7 +449,6 @@ function Attendance() {
       const candidate = {
         student,
         similarity: result.similarity || 0,
-        rawSimilarity: result.rawSimilarity ?? null,
         margin: result.margin ?? null,
         recommendedStatus: result.recommendedStatus,
         recommendedCheckInTime: result.recommendedCheckInTime
@@ -1738,8 +1737,8 @@ function Attendance() {
                 {recognizedCandidate.student.email}
               </div>
               <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
-                Cosine: {recognizedCandidate.rawSimilarity !== null && recognizedCandidate.rawSimilarity !== undefined
-                  ? recognizedCandidate.rawSimilarity.toFixed(3)
+                Cosine: {recognizedCandidate.similarity !== null && recognizedCandidate.similarity !== undefined
+                  ? recognizedCandidate.similarity.toFixed(3)
                   : '—'} | Margin: {recognizedCandidate.margin !== null && recognizedCandidate.margin !== undefined
                   ? recognizedCandidate.margin.toFixed(3)
                   : '—'}
