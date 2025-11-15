@@ -30,7 +30,7 @@ public class AttendanceController {
     private final SessionRecognitionManager recognitionManager;
 
     public AttendanceController(AttendanceService attendanceService,
-                                SessionRecognitionManager recognitionManager) {
+            SessionRecognitionManager recognitionManager) {
         this.attendanceService = attendanceService;
         this.recognitionManager = recognitionManager;
     }
@@ -107,5 +107,10 @@ public class AttendanceController {
             throw new InvalidRequestException("Invalid base64 image data");
         }
     }
-}
 
+    @PostMapping("/sessions/{sessionId}/warm-cache")
+    public ResponseEntity<Void> warmCache(@PathVariable Long sessionId) {
+        recognitionManager.warmCache(sessionId);
+        return ResponseEntity.ok().build();
+    }
+}

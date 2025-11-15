@@ -251,6 +251,18 @@ public class SessionRecognitionManager {
             System.out.println("[VOTING] Frame " + (scans + 1) + "/" + windowSize);
             System.out.println("[VOTING] Candidates: " + embeddingIndex.size() + " students");
 
+            System.out.println("[VOTING] --- Comparison Pool ---");
+            for (Map.Entry<String, List<float[]>> entry : embeddingIndex.entrySet()) {
+                String studentId = entry.getKey();
+                List<float[]> embeddings = entry.getValue();
+                StudentProfile profile = profiles.get(studentId);
+                String name = profile != null ? profile.getEmail() : studentId;
+                System.out.println("[VOTING]   " + name + " (" + studentId + "): " +
+                        embeddings.size() + " embeddings, " +
+                        "dimensions: " + (embeddings.isEmpty() ? "N/A" : embeddings.get(0).length));
+            }
+            System.out.println("[VOTING] --------------------------");
+
             // Get all detected faces with embeddings
             List<FaceRecognitionService.EmbeddingWithBbox> allEmbeddings = recognitionService
                     .computeAllEmbeddingsWithBbox(imageBytes);
@@ -386,7 +398,7 @@ public class SessionRecognitionManager {
                         record.setUserId(studentId);
                         record.setStatus(recommendedStatus);
                         record.setCheckinTime(now.toOffsetDateTime());
-                        record.setAutomatic(true); 
+                        record.setAutomatic(true);
                         record.setConfidenceLevel(similarity);
 
                         recordRepository.save(record);
@@ -712,5 +724,11 @@ public class SessionRecognitionManager {
         sessionCache.clear();
         System.out.println(
                 "[CACHE] Cleared " + sizeBefore + " session cache(s) after face data change for user: " + userId);
+    }
+
+    public void warmCache(Long sessionId) {
+        // Force cache load without scanning
+        sessionCache.computeIfAbsent(sessionId, this::loadContext);
+        System.out.println("[CACHE] Pre-warmed cache for session: " + sessionId);
     }
 }

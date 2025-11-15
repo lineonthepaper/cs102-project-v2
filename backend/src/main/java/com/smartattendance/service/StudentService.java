@@ -6,7 +6,6 @@ import com.smartattendance.dto.request.user.UpdateStudentRequest;
 import com.smartattendance.dto.response.face.FaceImageProcessingResultDTO;
 import com.smartattendance.dto.response.face.FaceProcessingSummaryDTO;
 import com.smartattendance.dto.response.user.*;
-import com.smartattendance.dto.response.user.StudentFaceProcessingResult;
 import com.smartattendance.entity.*;
 import com.smartattendance.exception.DuplicateEmailException;
 import com.smartattendance.exception.ResourceNotFoundException;
@@ -35,6 +34,8 @@ import java.util.stream.Collectors;
 public class StudentService {
 
     private static final Logger logger = LoggerFactory.getLogger(StudentService.class);
+    private static final String STUDENT_ID_PREFIX = "S";
+    private static final int ID_NUMBER_LENGTH = 7;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -142,6 +143,8 @@ public class StudentService {
         }
 
         try {
+            String newStudentId = generateNextStudentId();
+
             List<String> incomingFaceImages = Optional.ofNullable(request.getFaceImages())
                     .orElse(Collections.emptyList());
 
@@ -178,8 +181,8 @@ public class StudentService {
                     continue;
                 }
 
-                FaceRecognitionService.FaceEmbeddingResult embeddingResult =
-                        faceRecognitionService.computeEmbeddingDetailed(imageBytes);
+                FaceRecognitionService.FaceEmbeddingResult embeddingResult = faceRecognitionService
+                        .computeEmbeddingDetailed(imageBytes);
 
                 if (embeddingResult.isSuccess()) {
                     String normalized = ImageConverter.bytesToBase64(imageBytes);
@@ -224,13 +227,14 @@ public class StudentService {
             String faceImagesJson = serializeFaceImages(acceptedFaceImages);
             String faceProfilesJson = objectMapper.writeValueAsString(profiles);
 
-            String sql = "INSERT INTO users (email, first_name, last_name, face_images, face_profiles, is_student, is_instructor, is_ta, enabled, created_at) "
+            String sql = "INSERT INTO users (id, email, first_name, last_name, face_images, face_profiles, is_student, is_instructor, is_ta, enabled, created_at) "
                     +
-                    "VALUES (:email, :firstName, :lastName, CAST(:faceImages AS jsonb), CAST(:faceProfiles AS jsonb), true, false, false, true, CURRENT_TIMESTAMP) "
+                    "VALUES (:id, :email, :firstName, :lastName, CAST(:faceImages AS jsonb), CAST(:faceProfiles AS jsonb), true, false, false, true, CURRENT_TIMESTAMP) "
                     +
                     "RETURNING id";
 
             String generatedId = (String) entityManager.createNativeQuery(sql)
+                    .setParameter("id", newStudentId)
                     .setParameter("email", request.getEmail())
                     .setParameter("firstName", request.getFirstName())
                     .setParameter("lastName", request.getLastName())
@@ -256,6 +260,34 @@ public class StudentService {
             logger.error("Failed to create student: {}", request.getEmail(), e);
             throw new RuntimeException("Failed to create student", e);
         }
+    }
+
+    private String generateNextStudentId() {
+        int nextNumber = 1;
+
+        Optional<User> latestStudent = userRepository.findFirstByIdStartingWithOrderByIdDesc(STUDENT_ID_PREFIX);
+
+        if (latestStudent.isPresent()) {
+            String latestId = latestStudent.get().getId();
+            if (latestId != null) {
+                String numericPart = latestId.startsWith(STUDENT_ID_PREFIX)
+                        ? latestId.substring(STUDENT_ID_PREFIX.length())
+                        : latestId;
+                if (numericPart.matches("\\d+")) {
+                    try {
+                        nextNumber = Integer.parseInt(numericPart) + 1;
+                    } catch (NumberFormatException ignored) {
+                        nextNumber = 1;
+                    }
+                }
+            }
+        }
+
+        if (nextNumber < 1) {
+            nextNumber = 1;
+        }
+
+        return STUDENT_ID_PREFIX + String.format("%0" + ID_NUMBER_LENGTH + "d", nextNumber);
     }
 
     @Transactional
@@ -374,8 +406,8 @@ public class StudentService {
                         continue;
                     }
 
-                    FaceRecognitionService.FaceEmbeddingResult embeddingResult =
-                            faceRecognitionService.computeEmbeddingDetailed(imageBytes);
+                    FaceRecognitionService.FaceEmbeddingResult embeddingResult = faceRecognitionService
+                            .computeEmbeddingDetailed(imageBytes);
 
                     if (embeddingResult.isSuccess()) {
                         String normalized = ImageConverter.bytesToBase64(imageBytes);

@@ -818,9 +818,14 @@ function Attendance() {
     setSelectedSession(session)
     setMarkingSearchTerm('')
     setStatusFilterMarking('all')
-    setFilteredStudents([])  // Clear to show loading state
-    setShowMarkingModal(true)  // Show modal immediately
-    fetchStudentsAndRecords(session.id, session.section_id)  // Load data in background (no await)
+    setFilteredStudents([])
+    setShowMarkingModal(true)
+
+    fetch(`${API_BASE_URL}/api/attendance/sessions/${session.id}/warm-cache`, {
+      method: 'POST'
+    }).catch(err => console.error('Failed to warm cache:', err))
+    
+    fetchStudentsAndRecords(session.id, session.section_id)
   }
 
   const closeMarkingModal = () => {
