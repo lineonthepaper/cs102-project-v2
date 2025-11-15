@@ -9,7 +9,6 @@ import lombok.Getter;
 
 import org.opencv.core.Mat;
 import org.opencv.dnn.Dnn;
-import org.opencv.dnn.Net;
 import org.opencv.objdetect.CascadeClassifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +46,6 @@ public class FaceRecognitionService {
     private final ResourcePathUtils resourceUtils;
     private final Object modelLock = new Object();
 
-    private volatile Net recognitionNet;
     private volatile CascadeClassifier faceDetector;
 
     public FaceRecognitionService(ResourcePathUtils resourceUtils) {
@@ -111,72 +109,11 @@ public class FaceRecognitionService {
     }
 
     private void ensureModelsLoaded() {
-        if (recognitionNet != null && faceDetector != null && !faceDetector.empty()) {
+        if (faceDetector != null && !faceDetector.empty()) {
             return;
         }
 
         synchronized (modelLock) {
-            if (recognitionNet == null) {
-                logger.info("[INFO] Loading ArcFace ResNet100 model...");
-                String modelPath = resourceUtils.getResourceFilePath("models/facenet.onnx");
-                
-                // Check if resource loading failed
-                java.nio.file.Path path = null;
-                boolean pathValid = false;
-                try {
-                    if (modelPath != null && !modelPath.startsWith("Cannot get resource")) {
-                        path = java.nio.file.Paths.get(modelPath);
-                        pathValid = java.nio.file.Files.exists(path) && java.nio.file.Files.isRegularFile(path);
-                    }
-                } catch (Exception e) {
-                    pathValid = false;
-                }
-                
-                if (!pathValid) {
-                    String errorMessage = "\n" +
-                        "═══════════════════════════════════════════════════════════════\n" +
-                        "ERROR: Face recognition model not found!\n" +
-                        "═══════════════════════════════════════════════════════════════\n\n" +
-                        "The ArcFace model (facenet.onnx) is required but not found.\n\n" +
-                        "SOLUTION:\n" +
-                        "1. Run the setup script to download it automatically:\n" +
-                        "   macOS/Linux: ./scripts/setup-models.sh\n" +
-                        "   Windows:     scripts\\setup-models.bat\n\n" +
-                        "2. Or download manually:\n" +
-                        "   URL: https://github.com/onnx/models/raw/main/validated/vision/body_analysis/arcface/model/arcfaceresnet100-8.onnx\n" +
-                        "   Save to: backend/src/main/resources/models/facenet.onnx\n\n" +
-                        "3. Verify the file is ~249 MB after download\n" +
-                        "═══════════════════════════════════════════════════════════════\n";
-                    throw new IllegalStateException(errorMessage);
-                }
-                
-                try {
-                    recognitionNet = Dnn.readNetFromONNX(modelPath);
-                    if (recognitionNet.empty()) {
-                        throw new IllegalStateException("Failed to load ArcFace model - file may be corrupted");
-                    }
-                    logger.info("[INFO] ArcFace model loaded successfully!");
-                } catch (org.opencv.core.CvException e) {
-                    String errorMessage = "\n" +
-                        "═══════════════════════════════════════════════════════════════\n" +
-                        "ERROR: Failed to load ArcFace model!\n" +
-                        "═══════════════════════════════════════════════════════════════\n\n" +
-                        "The model file exists but cannot be loaded.\n\n" +
-                        "POSSIBLE CAUSES:\n" +
-                        "1. Model file is corrupted or incomplete\n" +
-                        "2. Model file is the wrong format\n" +
-                        "3. OpenCV version mismatch\n\n" +
-                        "SOLUTION:\n" +
-                        "1. Delete the existing model file:\n" +
-                        "   rm backend/src/main/resources/models/facenet.onnx\n\n" +
-                        "2. Re-run the setup script:\n" +
-                        "   macOS/Linux: ./scripts/setup-models.sh\n" +
-                        "   Windows:     scripts\\setup-models.bat\n\n" +
-                        "Original error: " + e.getMessage() + "\n" +
-                        "═══════════════════════════════════════════════════════════════\n";
-                    throw new IllegalStateException(errorMessage, e);
-                }
-            }
             if (faceDetector == null || faceDetector.empty()) {
                 logger.info("[INFO] Loading Haar Cascade face detector...");
                 String detectorPath = resourceUtils.getResourceFilePath("models/haarcascade_frontalface_alt.xml");
@@ -211,7 +148,7 @@ public class FaceRecognitionService {
         Mat faceMat = detection.getFaceMat();
         try {
             System.out.println("[EMBEDDING] Computing embedding from face region...");
-            float[] embedding = FaceEmbeddingUtils.faceToEmbedding(faceMat, recognitionNet);
+            float[] embedding = FaceEmbeddingUtils.faceToEmbedding(faceMat);
             System.out.println("[EMBEDDING] Successfully computed " + embedding.length + "-dimensional embedding");
             return FaceEmbeddingResult.success(embedding, extraction);
         } finally {
@@ -266,7 +203,7 @@ public class FaceRecognitionService {
                 FaceDetectionResult detection = outcome.getDetectionResultOrNull();
                 Mat faceMat = detection.getFaceMat();
                 try {
-                    float[] embedding = FaceEmbeddingUtils.faceToEmbedding(faceMat, recognitionNet);
+                    float[] embedding = FaceEmbeddingUtils.faceToEmbedding(faceMat);
                     results.add(new EmbeddingWithBbox(
                             embedding,
                             detection.getBoundingBox(),

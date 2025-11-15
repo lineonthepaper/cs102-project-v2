@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.opencv.core.Mat;
-import org.opencv.dnn.Net;
 
 import com.smartattendance.entity.ComparisonResult;
 
@@ -21,7 +20,7 @@ public class FaceRecognitionUtils {
 
     // Find the best match from training faces (single embedding per identity)
     public static ComparisonResult findBestMatch(Mat targetFace, Map<String, float[]> trainingEmbeddings,
-            double similarityThreshold, Net net) {
+            double similarityThreshold) {
         if (trainingEmbeddings == null || trainingEmbeddings.isEmpty()) {
             return null;
         }
@@ -30,7 +29,7 @@ public class FaceRecognitionUtils {
                 .stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, entry -> Collections.singletonList(entry.getValue())));
 
-        float[] candidateEmbedding = FaceEmbeddingUtils.faceToEmbedding(targetFace, net);
+        float[] candidateEmbedding = FaceEmbeddingUtils.faceToEmbedding(targetFace);
         return findBestMatch(candidateEmbedding, enrichedEmbeddings, similarityThreshold);
     }
 
