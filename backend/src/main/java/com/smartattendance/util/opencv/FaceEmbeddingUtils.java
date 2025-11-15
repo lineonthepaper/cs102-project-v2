@@ -24,7 +24,7 @@ public class FaceEmbeddingUtils {
             float[] array = FeatureExtraction.predict(face);
             return normalizeVector(array);
         } catch (Exception e) {
-            throw new InvalidRequestException(e.getMessage());
+            throw new InvalidRequestException("Failed to compute embedding: " + e.getMessage());
         }
     }
 

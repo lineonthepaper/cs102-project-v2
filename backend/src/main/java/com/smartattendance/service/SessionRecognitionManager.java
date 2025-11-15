@@ -21,9 +21,9 @@ import com.smartattendance.dto.response.attendance.BoundingBoxDTO;
 import com.smartattendance.dto.response.attendance.FaceScanResponseDTO;
 import com.smartattendance.dto.response.attendance.FaceDetectionDTO;
 import com.smartattendance.dto.response.attendance.RecognizedStudentDTO;
-import com.smartattendance.entity.AttendanceRecord;
 import com.smartattendance.entity.AttendanceSession;
 import com.smartattendance.entity.AttendanceStatus;
+import com.smartattendance.entity.AttendanceRecord;
 import com.smartattendance.entity.SectionEnrollment;
 import com.smartattendance.entity.User;
 import com.smartattendance.repository.AttendanceRecordRepository;
@@ -49,12 +49,6 @@ public class SessionRecognitionManager {
 
     @Value("${face.voting.minSimilarity:0.92}")
     private double votingMinSimilarity;
-
-    @Value("${face.voting.minMargin:0.01}")
-    private double votingMinMargin;
-
-    @Value("${face.voting.mode:best}")
-    private String votingMode;
 
     private final Map<Long, SessionRecognitionContext> sessionCache = new ConcurrentHashMap<>();
 
@@ -94,11 +88,12 @@ public class SessionRecognitionManager {
         List<SectionEnrollment> enrollments = enrollmentRepository
                 .findBySectionIdAndIsActive(session.getSectionId(), Boolean.TRUE);
 
+        double minCosSimilarity = Math.max(-1.0, Math.min(1.0, votingMinSimilarity * 2.0 - 1.0));
+
         if (enrollments.isEmpty()) {
             return new SessionRecognitionContext(session, Collections.emptyMap(), Collections.emptyMap(),
-                    faceRecognitionService, recordRepository, votingWindowSize, votingRequiredVotes,
-                    votingMinSimilarity, votingMinMargin,
-                    "best".equalsIgnoreCase((votingMode != null ? votingMode : "").trim()));
+                    faceRecognitionService, votingWindowSize, votingRequiredVotes,
+                    minCosSimilarity);
         }
 
         List<String> studentIds = enrollments.stream()
@@ -178,9 +173,7 @@ public class SessionRecognitionManager {
         existingStatuses.keySet().retainAll(retainedIds);
 
         return new SessionRecognitionContext(session, profiles, existingStatuses, faceRecognitionService,
-                recordRepository,
-                votingWindowSize, votingRequiredVotes, votingMinSimilarity, votingMinMargin,
-                "best".equalsIgnoreCase((votingMode != null ? votingMode : "").trim()));
+                votingWindowSize, votingRequiredVotes, minCosSimilarity);
     }
 
     private byte[] decodeBase64(String value) {
@@ -195,13 +188,151 @@ public class SessionRecognitionManager {
         }
     }
 
+        private static final class SimilarityCalibrator {
+
+            private final float impostorMean;
+            private final float logisticCenter;
+            private final float logisticScale;
+            private final float marginScale;
+
+            private SimilarityCalibrator(float impostorMean,
+                                        float logisticCenter,
+                                        float logisticScale,
+                                        float marginScale) {
+                this.impostorMean = impostorMean;
+                this.logisticCenter = logisticCenter;
+                this.logisticScale = logisticScale;
+                this.marginScale = marginScale;
+            }
+
+            static SimilarityCalibrator defaultCalibrator() {
+                // Calibrated to keep displayed confidence closer to observed accuracy (~70%)
+                return new SimilarityCalibrator(0.0f, 0.91f, 0.07f, 0.12f);
+            }
+
+            static SimilarityCalibrator compute(Map<String, List<float[]>> embeddingIndex) {
+                if (embeddingIndex == null || embeddingIndex.isEmpty()) {
+                    return defaultCalibrator();
+                }
+
+                List<Float> positives = new ArrayList<>();
+                List<Float> negatives = new ArrayList<>();
+                List<Map.Entry<String, List<float[]>>> entries = new ArrayList<>(embeddingIndex.entrySet());
+
+                for (Map.Entry<String, List<float[]>> entry : entries) {
+                    List<float[]> vectors = entry.getValue();
+                    if (vectors == null || vectors.size() < 2) {
+                        continue;
+                    }
+                    for (int i = 0; i < vectors.size(); i++) {
+                        float[] vi = vectors.get(i);
+                        if (vi == null) continue;
+                        for (int j = i + 1; j < vectors.size(); j++) {
+                            float[] vj = vectors.get(j);
+                            if (vj == null) continue;
+                            positives.add(com.smartattendance.util.opencv.FaceRecognitionUtils.cosine(vi, vj));
+                        }
+                    }
+                }
+
+                for (int i = 0; i < entries.size(); i++) {
+                    List<float[]> left = entries.get(i).getValue();
+                    if (left == null) {
+                        continue;
+                    }
+                    for (int j = i + 1; j < entries.size(); j++) {
+                        List<float[]> right = entries.get(j).getValue();
+                        if (right == null) {
+                            continue;
+                        }
+                        for (float[] a : left) {
+                            if (a == null) continue;
+                            for (float[] b : right) {
+                                if (b == null) continue;
+                                negatives.add(com.smartattendance.util.opencv.FaceRecognitionUtils.cosine(a, b));
+                            }
+                        }
+                    }
+                }
+
+                if (positives.isEmpty() || negatives.isEmpty()) {
+                    return defaultCalibrator();
+                }
+
+                float posMean = mean(positives);
+                float negMean = mean(negatives);
+                float posStd = std(positives, posMean);
+                float negStd = std(negatives, negMean);
+
+                float center = Math.max(0.88f, Math.min(0.97f, (posMean + negMean) / 2.0f));
+                float spread = Math.max(0.06f, posMean - negMean);
+                float scale = Math.max(0.07f, spread / 3.5f);
+                float marginScale = Math.max(0.12f,
+                        Math.min(0.25f, scale * 1.5f + 0.5f * (posStd + negStd)));
+
+                System.out.println(String.format("[CALIBRATION] impostor mean=%.3f (±%.3f), genuine mean=%.3f (±%.3f)",
+                        negMean, negStd, posMean, posStd));
+                System.out.println(String.format("[CALIBRATION] logistic center=%.3f, scale=%.3f, marginScale=%.3f",
+                        center, scale, marginScale));
+
+                return new SimilarityCalibrator(negMean, center, scale, marginScale);
+            }
+
+            float confidence(float cosine, float runnerUpCosine) {
+                float scale = logisticScale < 0.02f ? 0.02f : logisticScale;
+                float logistic = clamp01((float) (1.0 / (1.0 + Math.exp(-(cosine - logisticCenter) / scale))));
+                if (Float.isNaN(logistic)) {
+                    logistic = 0.5f;
+                }
+
+                float marginConfidence = 1.0f;
+                if (!Float.isNaN(runnerUpCosine) && runnerUpCosine > -1.0f) {
+                    float margin = Math.max(0.0f, cosine - runnerUpCosine);
+                    marginConfidence = clamp01(margin / marginScale);
+                }
+
+                float blended = 0.75f * logistic + 0.25f * marginConfidence;
+                return clamp01(blended);
+            }
+
+            float getImpostorMean() {
+                return impostorMean;
+            }
+
+            private static float mean(List<Float> values) {
+                float sum = 0.0f;
+                for (float v : values) {
+                    sum += v;
+                }
+                return sum / values.size();
+            }
+
+            private static float std(List<Float> values, float mean) {
+                if (values.size() <= 1) {
+                    return 0.0f;
+                }
+                float accum = 0.0f;
+                for (float v : values) {
+                    float diff = v - mean;
+                    accum += diff * diff;
+                }
+                return (float) Math.sqrt(accum / (values.size() - 1));
+            }
+
+            private float clamp01(float value) {
+                if (Float.isNaN(value)) {
+                    return 0.0f;
+                }
+                return Math.max(0.0f, Math.min(1.0f, value));
+            }
+        }
+
     private static final class SessionRecognitionContext {
 
         private final AttendanceSession session;
         private final Map<String, StudentProfile> profiles;
         private final Map<String, AttendanceStatus> statuses;
         private final FaceRecognitionService recognitionService;
-        private final AttendanceRecordRepository recordRepository;
         private final Map<String, Integer> voteCounts = new ConcurrentHashMap<>();
         private final Map<String, Float> maxSimilarityById = new ConcurrentHashMap<>();
         private final Map<String, org.opencv.core.Rect> boundingBoxByCandidate = new ConcurrentHashMap<>();
@@ -213,32 +344,30 @@ public class SessionRecognitionManager {
         private int scans = 0;
 
         private volatile Map<String, List<float[]>> embeddingIndex;
+        private SimilarityCalibrator calibrator;
 
         private SessionRecognitionContext(AttendanceSession session,
                 Map<String, StudentProfile> profiles,
                 Map<String, AttendanceStatus> statuses,
                 FaceRecognitionService recognitionService,
-                AttendanceRecordRepository recordRepository,
                 int windowSize,
                 int requiredVotes,
-                double minSimilarity,
-                double minMargin,
-                boolean bestMode) {
+                double minSimilarity) {
             this.session = session;
             this.profiles = profiles;
             this.statuses = new ConcurrentHashMap<>(statuses);
             this.recognitionService = recognitionService;
-            this.recordRepository = recordRepository;
+            this.calibrator = SimilarityCalibrator.defaultCalibrator();
             rebuildEmbeddingIndex();
             this.windowSize = Math.max(1, windowSize);
             this.requiredVotes = Math.max(1, requiredVotes);
             this.minSimilarity = minSimilarity;
-            // minMargin and bestMode are not used in simplified voting logic
         }
 
         private void rebuildEmbeddingIndex() {
             this.embeddingIndex = profiles.values().stream()
                     .collect(Collectors.toMap(StudentProfile::getUserId, StudentProfile::getEmbeddings));
+            this.calibrator = SimilarityCalibrator.compute(this.embeddingIndex);
         }
 
         FaceScanResponseDTO match(byte[] imageBytes) {
@@ -267,9 +396,6 @@ public class SessionRecognitionManager {
             List<FaceRecognitionService.EmbeddingWithBbox> allEmbeddings = recognitionService
                     .computeAllEmbeddingsWithBbox(imageBytes);
 
-            // Track which candidates were detected in THIS frame
-            Set<String> candidatesInThisFrame = new java.util.HashSet<>();
-
             if (!allEmbeddings.isEmpty()) {
                 System.out.println("[VOTING] Detected " + allEmbeddings.size() + " face(s) in this frame");
 
@@ -286,8 +412,8 @@ public class SessionRecognitionManager {
                         StudentProfile profile = profiles.get(candidateId);
                         String candidateName = profile != null ? profile.getEmail() : candidateId;
 
-                        System.out.println("[VOTING] Top match: " + candidateName + " with " +
-                                String.format("%.2f%%", topSim * 100) + " similarity");
+                        System.out.println("[VOTING] Top match: " + candidateName + " cosine=" +
+                                String.format("%.3f", topSim));
 
                         // Only count as vote if above minimum threshold
                         if (topSim >= (float) this.minSimilarity) {
@@ -299,14 +425,13 @@ public class SessionRecognitionManager {
                             originalWidthByCandidate.put(candidateId, emb.getOriginalWidth());
                             originalHeightByCandidate.put(candidateId, emb.getOriginalHeight());
 
-                            // Track that this candidate was detected in this frame
-                            candidatesInThisFrame.add(candidateId);
-
                             System.out.println("[VOTING] Vote counted! Total votes for " + candidateName + ": " +
-                                    voteCounts.get(candidateId));
+                                    voteCounts.get(candidateId) + " (threshold=" +
+                                    String.format("%.3f", this.minSimilarity) + ")");
                         } else {
-                            System.out.println("[VOTING] Vote NOT counted (below " +
-                                    String.format("%.2f%%", this.minSimilarity * 100) + " threshold)");
+                            System.out.println("[VOTING] Vote NOT counted (cosine " +
+                                    String.format("%.3f", topSim) + " below threshold " +
+                                    String.format("%.3f", this.minSimilarity) + ")");
                         }
                     }
                 }
@@ -326,7 +451,7 @@ public class SessionRecognitionManager {
                             String name = p != null ? p.getEmail() : e.getKey();
                             float sim = maxSimilarityById.getOrDefault(e.getKey(), 0.0f);
                             System.out.println("[VOTING]   " + name + ": " + e.getValue() +
-                                    " votes (best: " + String.format("%.2f%%", sim * 100) + ")");
+                                    " votes (best cosine=" + String.format("%.3f", sim) + ")");
                         });
             }
 
@@ -361,84 +486,70 @@ public class SessionRecognitionManager {
                     return FaceScanResponseDTOBuilder.noMatch("No clear match; please try again");
                 }
 
-                // Determine attendance status
                 ZonedDateTime now = ZonedDateTime.now(DEFAULT_ZONE);
                 AttendanceStatus recommendedStatus = determineAttendanceStatus(now);
 
-                // Auto-mark ALL winners
-                List<RecognizedStudentDTO> markedStudents = new ArrayList<>();
+                Map.Entry<String, Integer> best = winners.get(0);
+                String studentId = best.getKey();
+                StudentProfile profile = profiles.get(studentId);
 
-                for (Map.Entry<String, Integer> winner : winners) {
-                    String studentId = winner.getKey();
-                    int votes = winner.getValue();
-                    StudentProfile profile = profiles.get(studentId);
-
-                    if (profile == null) {
-                        System.out.println("[VOTING] WARNING: Profile not found for " + studentId);
-                        continue;
-                    }
-
-                    String candidateName = profile.getEmail();
-
-                    // Check if already marked
-                    AttendanceStatus currentStatus = statuses.get(studentId);
-                    if (currentStatus != null && currentStatus.isPresent()) {
-                        System.out.println(
-                                "[VOTING] " + candidateName + " already marked as " + currentStatus + ", skipping");
-                        continue;
-                    }
-
-                    double similarity = (double) maxSimilarityById.getOrDefault(studentId, 0.0f);
-
-                    updateStatus(studentId, recommendedStatus);
-
-                    try {
-                        AttendanceRecord record = new AttendanceRecord();
-                        record.setSessionId(session.getId());
-                        record.setUserId(studentId);
-                        record.setStatus(recommendedStatus);
-                        record.setCheckinTime(now.toOffsetDateTime());
-                        record.setAutomatic(true);
-                        record.setConfidenceLevel(similarity);
-
-                        recordRepository.save(record);
-
-                        System.out.println("[VOTING] ✓ AUTO-MARKED & SAVED: " + candidateName);
-                        System.out.println("[VOTING]   Votes: " + votes + "/" + requiredVotes);
-                        System.out.println("[VOTING]   Similarity: " + String.format("%.2f%%", similarity * 100));
-                        System.out.println("[VOTING]   Status: " + recommendedStatus);
-                        System.out.println("[VOTING]   Time: " + now.toOffsetDateTime());
-                        System.out.println("[VOTING]   ✓ Saved to database");
-                    } catch (Exception e) {
-                        System.out.println("[VOTING] ERROR saving to DB: " + e.getMessage());
-                        e.printStackTrace();
-                        continue;
-                    }
-
-                    // Build DTO for response
-                    RecognizedStudentDTO studentDTO = new RecognizedStudentDTO();
-                    studentDTO.setId(profile.getUserId());
-                    studentDTO.setDisplayId(profile.getDisplayId());
-                    studentDTO.setFirstName(profile.getFirstName());
-                    studentDTO.setLastName(profile.getLastName());
-                    studentDTO.setEmail(profile.getEmail());
-
-                    markedStudents.add(studentDTO);
+                if (profile == null) {
+                    System.out.println("[VOTING] WARNING: Profile not found for " + studentId);
+                    resetVoting();
+                    return FaceScanResponseDTOBuilder.noMatch("Unable to identify student profile");
                 }
+
+                float cosine = maxSimilarityById.getOrDefault(studentId, 0.0f);
+                float runnerUp = getRunnerUpSimilarity(studentId);
+                SimilarityCalibrator activeCalibrator = (calibrator != null)
+                        ? calibrator
+                        : SimilarityCalibrator.defaultCalibrator();
+                float confidence = activeCalibrator.confidence(cosine, runnerUp);
+
+                System.out.println(String.format("[VOTING] Winner %s: votes=%d cosine=%.3f runnerUp=%.3f confidence=%.3f",
+                        profile.getEmail(), best.getValue(), cosine, runnerUp, confidence));
+
+                org.opencv.core.Rect bbox = boundingBoxByCandidate.get(studentId);
+                int originalWidth = originalWidthByCandidate.getOrDefault(studentId, 0);
+                int originalHeight = originalHeightByCandidate.getOrDefault(studentId, 0);
+
+                AttendanceStatus currentStatus = statuses.get(studentId);
+                AttendanceStatus statusForDto = (currentStatus != null && currentStatus.isPresent())
+                        ? currentStatus
+                        : recommendedStatus;
+
+                FaceScanResponseDTO dto = FaceScanResponseDTOBuilder.match(
+                        profile,
+                        confidence,
+                        statusForDto,
+                        now.toOffsetDateTime(),
+                        bbox,
+                        originalWidth,
+                        originalHeight);
+                dto.setRawSimilarity(cosine);
+
+                float marginValue = (!Float.isNaN(runnerUp) && runnerUp > -1.0f)
+                        ? (cosine - runnerUp)
+                        : (cosine - activeCalibrator.getImpostorMean());
+
+                if (currentStatus != null && currentStatus.isPresent()) {
+                    dto.setMatched(false);
+                    dto.setAlreadyMarked(true);
+                    dto.setRecommendedStatus(currentStatus.getCode());
+                    dto.setMessage(String.format("Student already marked as %s (cos=%.3f).",
+                            currentStatus.getCode(), cosine));
+                } else {
+                    dto.setMatched(true);
+                    dto.setAlreadyMarked(false);
+                    dto.setRecommendedStatus(recommendedStatus != null ? recommendedStatus.getCode() : null);
+                    dto.setMessage(String.format("Match found (cos=%.3f, margin=%.3f). Please confirm.",
+                            cosine, marginValue));
+                }
+                dto.setMargin(marginValue);
 
                 System.out.println("[VOTING] ============================================\n");
                 resetVoting();
-
-                if (markedStudents.isEmpty()) {
-                    return FaceScanResponseDTOBuilder.noMatch("All detected students already marked");
-                }
-
-                // Return multi-student response
-                return FaceScanResponseDTOBuilder.multiMatch(
-                        markedStudents,
-                        recommendedStatus,
-                        now.toOffsetDateTime(),
-                        "Auto-marked " + markedStudents.size() + " student(s)");
+                return dto;
             }
 
             System.out.println("[VOTING] Continue scanning... (" + scans + "/" + windowSize + " frames)");
@@ -446,7 +557,11 @@ public class SessionRecognitionManager {
 
             // Return all detected candidates for real-time overlay display
             if (!voteCounts.isEmpty() && !maxSimilarityById.isEmpty()) {
+                SimilarityCalibrator activeCalibrator = (calibrator != null)
+                        ? calibrator
+                        : SimilarityCalibrator.defaultCalibrator();
                 return FaceScanResponseDTOBuilder.scanningWithAllDetections(
+                        activeCalibrator,
                         profiles, maxSimilarityById, boundingBoxByCandidate,
                         originalWidthByCandidate, originalHeightByCandidate);
             }
@@ -461,6 +576,18 @@ public class SessionRecognitionManager {
             originalWidthByCandidate.clear();
             originalHeightByCandidate.clear();
             scans = 0;
+        }
+
+        private float getRunnerUpSimilarity(String excludeId) {
+            float runnerUp = Float.NEGATIVE_INFINITY;
+            for (Map.Entry<String, Float> entry : maxSimilarityById.entrySet()) {
+                if (!entry.getKey().equals(excludeId)) {
+                    if (entry.getValue() > runnerUp) {
+                        runnerUp = entry.getValue();
+                    }
+                }
+            }
+            return runnerUp == Float.NEGATIVE_INFINITY ? Float.NaN : runnerUp;
         }
 
         private AttendanceStatus determineAttendanceStatus(ZonedDateTime now) {
@@ -550,10 +677,13 @@ public class SessionRecognitionManager {
             dto.setMessage(message);
             dto.setAlreadyMarked(false);
             dto.setSimilarity(0.0);
+            dto.setRawSimilarity(0.0);
+            dto.setMargin(0.0);
             return dto;
         }
 
-        static FaceScanResponseDTO scanningWithAllDetections(Map<String, StudentProfile> profiles,
+        static FaceScanResponseDTO scanningWithAllDetections(SimilarityCalibrator calibrator,
+                Map<String, StudentProfile> profiles,
                 Map<String, Float> maxSimilarityById,
                 Map<String, org.opencv.core.Rect> boundingBoxByCandidate,
                 Map<String, Integer> originalWidthByCandidate,
@@ -563,7 +693,7 @@ public class SessionRecognitionManager {
             // Create detection entry for each candidate that has votes
             for (Map.Entry<String, Float> entry : maxSimilarityById.entrySet()) {
                 String candidateId = entry.getKey();
-                double similarity = entry.getValue();
+                double rawSimilarity = entry.getValue();
 
                 org.opencv.core.Rect bbox = boundingBoxByCandidate.get(candidateId);
                 if (bbox == null)
@@ -586,7 +716,8 @@ public class SessionRecognitionManager {
                 studentDTO.setLastName(profile.getLastName());
                 studentDTO.setEmail(profile.getEmail());
 
-                detections.add(new FaceDetectionDTO(bboxDTO, studentDTO, similarity));
+                double confidenceScore = calibrator.confidence((float) rawSimilarity, Float.NaN);
+                detections.add(new FaceDetectionDTO(bboxDTO, studentDTO, confidenceScore, rawSimilarity));
             }
 
             FaceScanResponseDTO dto = new FaceScanResponseDTO();
@@ -594,82 +725,20 @@ public class SessionRecognitionManager {
             dto.setAlreadyMarked(false);
             dto.setMessage("Scanning...");
             dto.setAllDetections(detections);
+            dto.setMargin(0.0);
 
             // Still set primary bounding box and student (the leader) for backwards
             // compatibility
             if (!detections.isEmpty()) {
                 FaceDetectionDTO leader = detections.stream()
-                        .max((a, b) -> Double.compare(a.getSimilarity(), b.getSimilarity()))
+                        .max((a, b) -> Double.compare(a.getRawSimilarity(), b.getRawSimilarity()))
                         .orElse(detections.get(0));
                 dto.setBoundingBox(leader.getBoundingBox());
                 dto.setStudent(leader.getStudent());
                 dto.setSimilarity(leader.getSimilarity());
+                dto.setRawSimilarity(leader.getRawSimilarity());
+                dto.setMargin(0.0);
             }
-
-            return dto;
-        }
-
-        static FaceScanResponseDTO scanningWithCandidate(StudentProfile profile,
-                double similarity,
-                org.opencv.core.Rect boundingBox,
-                int originalWidth,
-                int originalHeight) {
-            FaceScanResponseDTO dto = new FaceScanResponseDTO();
-            dto.setMatched(false);
-            dto.setAlreadyMarked(false);
-            dto.setSimilarity(similarity);
-            dto.setMessage("Scanning...");
-
-            if (boundingBox != null) {
-                BoundingBoxDTO bboxDTO = new BoundingBoxDTO(
-                        boundingBox.x,
-                        boundingBox.y,
-                        boundingBox.width,
-                        boundingBox.height,
-                        originalWidth,
-                        originalHeight);
-                dto.setBoundingBox(bboxDTO);
-            }
-
-            RecognizedStudentDTO studentDTO = new RecognizedStudentDTO();
-            studentDTO.setId(profile.getUserId());
-            studentDTO.setDisplayId(profile.getDisplayId());
-            studentDTO.setFirstName(profile.getFirstName());
-            studentDTO.setLastName(profile.getLastName());
-            studentDTO.setEmail(profile.getEmail());
-            dto.setStudent(studentDTO);
-
-            return dto;
-        }
-
-        static FaceScanResponseDTO alreadyMarked(StudentProfile profile,
-                double similarity,
-                AttendanceStatus status,
-                String message) {
-            FaceScanResponseDTO dto = match(profile, similarity, status, null);
-            dto.setAlreadyMarked(true);
-            dto.setMessage(message);
-            dto.setMatched(false);
-            return dto;
-        }
-
-        static FaceScanResponseDTO multiMatch(List<RecognizedStudentDTO> students,
-                AttendanceStatus recommendedStatus,
-                OffsetDateTime checkInTime,
-                String message) {
-            FaceScanResponseDTO dto = new FaceScanResponseDTO();
-            dto.setMatched(true);
-            dto.setAlreadyMarked(false);
-            dto.setSimilarity(0.0);
-            dto.setRecommendedStatus(recommendedStatus != null ? recommendedStatus.getCode() : null);
-            dto.setRecommendedCheckInTime(checkInTime);
-            dto.setMessage(message);
-
-            if (!students.isEmpty()) {
-                dto.setStudent(students.get(0));
-            }
-
-            dto.setAllStudents(students);
 
             return dto;
         }
@@ -692,6 +761,8 @@ public class SessionRecognitionManager {
             dto.setMatched(true);
             dto.setAlreadyMarked(false);
             dto.setSimilarity(similarity);
+            dto.setRawSimilarity(similarity);
+            dto.setMargin(0.0);
             dto.setRecommendedStatus(recommendedStatus != null ? recommendedStatus.getCode() : null);
             dto.setRecommendedCheckInTime(checkInTime);
 

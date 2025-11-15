@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class AttendanceServiceTest {
@@ -73,7 +74,7 @@ class AttendanceServiceTest {
         testRecord.setUserId("S0000001");
         testRecord.setStatus(AttendanceStatus.PRESENT);
 
-        when(strategyFactory.getStrategy(anyString())).thenThrow(new IllegalArgumentException("Not implemented in tests"));
+        lenient().when(strategyFactory.getStrategy(anyString())).thenThrow(new IllegalArgumentException("Not implemented in tests"));
     }
 
     @Test

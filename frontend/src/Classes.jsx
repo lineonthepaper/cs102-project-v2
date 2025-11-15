@@ -435,22 +435,6 @@ function Classes() {
     }
   }
 
-  const deleteSection = async (sectionId) => {
-    if (!confirm('Are you sure you want to delete this section?')) return
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/sections/${sectionId}`, {
-        method: 'DELETE'
-      })
-      if (!response.ok) throw new Error('Failed to delete section')
-
-      await fetchSections()
-    } catch (error) {
-      console.error('Error deleting section:', error)
-      alert('Failed to delete section')
-    }
-  }
-
   const editSection = (section) => {
     setEditingSection(section)
 
@@ -817,12 +801,6 @@ function Classes() {
                             className="btn btn-small btn-action"
                           >
                             Edit
-                          </button>
-                          <button
-                            onClick={() => deleteSection(section.id)}
-                            className="btn btn-small btn-action"
-                          >
-                            Delete
                           </button>
                         </div>
                       </td>

@@ -84,8 +84,8 @@ public class Section {
     }
     
     public void setMeetingDay(Integer meetingDay) {
-        if (meetingDay != null && (meetingDay < 1 || meetingDay > 7)) {
-            throw new IllegalArgumentException("Meeting day must be between 1 (Monday) and 7 (Sunday)");
+        if (meetingDay != null && (meetingDay < 0 || meetingDay > 6)) {
+            throw new IllegalArgumentException("Meeting day must be between 0 (Monday) and 6 (Sunday)");
         }
         this.meetingDay = meetingDay;
     }

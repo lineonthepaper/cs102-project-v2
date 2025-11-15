@@ -18,10 +18,11 @@ function SectionAttendance() {
   const [sessionForm, setSessionForm] = useState({
     section_id: sectionId,
     session_date: "",
-    scheduled_start_time: "09:00",
-    scheduled_end_time: "10:30",
+    scheduled_start_time: "",
+    scheduled_end_time: "",
     notes: ""
   });
+  const [sectionDetails, setSectionDetails] = useState(null);
   const [editingSession, setEditingSession] = useState(null);
 
   const [students, setStudents] = useState([]);
@@ -45,6 +46,11 @@ function SectionAttendance() {
   const recognizedCandidateRef = useRef(null);
   const lastResponseIdRef = useRef(0);
 
+  const normalizeTime = (time) => {
+    if (!time) return "";
+    return time.length > 5 ? time.slice(0, 5) : time;
+  };
+
 
   const fetchSessions = async () => {
     setLoading(true);
@@ -57,6 +63,26 @@ function SectionAttendance() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSectionDetails = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/sections`);
+      if (!res.ok) throw new Error('Failed to fetch section details');
+      const data = await res.json();
+      const matchedSection = data.find(section => String(section.id) === String(sectionId));
+      if (matchedSection) {
+        setSectionDetails(matchedSection);
+        setSessionForm(prev => ({
+          ...prev,
+          section_id: sectionId,
+          scheduled_start_time: normalizeTime(matchedSection.startTime) || prev.scheduled_start_time || "09:00",
+          scheduled_end_time: normalizeTime(matchedSection.endTime) || prev.scheduled_end_time || "10:30"
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching section details:', error);
     }
   };
 
@@ -207,14 +233,38 @@ function SectionAttendance() {
     setShowMarkingModal(true);
   };
 
+  const handleOpenSessionModal = () => {
+    setEditingSession(null);
+    setSessionForm({
+      section_id: sectionId,
+      session_date: "",
+    scheduled_start_time: normalizeTime(sectionDetails?.startTime) || "09:00",
+    scheduled_end_time: normalizeTime(sectionDetails?.endTime) || "10:30",
+      notes: ""
+    });
+  if (!sectionDetails) {
+    fetchSectionDetails();
+  }
+    setShowSessionModal(true);
+  };
+
 
   const saveSession = async () => {
     try {
+      const startTime =
+        sessionForm.scheduled_start_time ||
+        normalizeTime(sectionDetails?.startTime) ||
+        "09:00";
+      const endTime =
+        sessionForm.scheduled_end_time ||
+        normalizeTime(sectionDetails?.endTime) ||
+        "10:30";
+
       const requestBody = {
         sectionId: parseInt(sectionId),
         sessionDate: sessionForm.session_date,
-        scheduledStartTime: sessionForm.scheduled_start_time,
-        scheduledEndTime: sessionForm.scheduled_end_time,
+        scheduledStartTime: startTime,
+        scheduledEndTime: endTime,
         notes: sessionForm.notes || null
       };
 
@@ -232,7 +282,14 @@ function SectionAttendance() {
       fetchSessions();
       setShowSessionModal(false);
       setEditingSession(null);
-      setSessionForm({ ...sessionForm, session_date: "", notes: "" });
+      setSessionForm(prev => ({
+        ...prev,
+        section_id: sectionId,
+        session_date: "",
+        notes: "",
+        scheduled_start_time: normalizeTime(sectionDetails?.startTime) || prev.scheduled_start_time || "09:00",
+        scheduled_end_time: normalizeTime(sectionDetails?.endTime) || prev.scheduled_end_time || "10:30"
+      }));
     } catch (err) {
       console.error(err);
     }
@@ -441,10 +498,12 @@ function SectionAttendance() {
     const student = result.student;
     if (!student || shouldSkipStudent(student.id)) return;
 
-    setScannerMessage('Match found - please confirm');
+    setScannerMessage(result.message || 'Match found - please confirm');
     setRecognizedCandidate({
       student,
       similarity: result.similarity,
+      rawSimilarity: result.rawSimilarity ?? null,
+      margin: result.margin ?? null,
       recommendedStatus: result.recommendedStatus,
       recommendedCheckInTime: result.recommendedCheckInTime
     });
@@ -553,9 +612,18 @@ function SectionAttendance() {
     resetScannerForNextStudent();
   };
 
-  useEffect(() => {
-    fetchSessions();
-  }, [sectionId]);
+useEffect(() => {
+  fetchSessions();
+  fetchSectionDetails();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [sectionId]);
+
+useEffect(() => {
+  setSessionForm(prev => ({
+    ...prev,
+    section_id: sectionId
+  }));
+}, [sectionId]);
 
   return (
     <div className="container">
@@ -591,7 +659,7 @@ function SectionAttendance() {
           <div className="panel-header">
             <h3>Attendance Sessions</h3>
             {activeTab === 'active' && (
-              <button onClick={() => setShowSessionModal(true)} className="btn btn-primary-small">
+              <button onClick={handleOpenSessionModal} className="btn btn-primary-small">
                 Create Session
               </button>
             )}
@@ -874,6 +942,13 @@ function SectionAttendance() {
               </div>
               <div style={{ fontSize: 14, color: '#555' }}>
                 {recognizedCandidate.student.email}
+              </div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
+                Cosine: {recognizedCandidate.rawSimilarity !== null && recognizedCandidate.rawSimilarity !== undefined
+                  ? recognizedCandidate.rawSimilarity.toFixed(3)
+                  : '—'} | Margin: {recognizedCandidate.margin !== null && recognizedCandidate.margin !== undefined
+                  ? recognizedCandidate.margin.toFixed(3)
+                  : '—'}
               </div>
             </div>
 

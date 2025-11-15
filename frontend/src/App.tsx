@@ -12,6 +12,7 @@ import Attendance from './Attendance'
 import SectionAttendance from './SectionAttendance'
 import Dashboard from './Dashboard'
 import './styles.css'
+// import Register from './Register'
 
 
 function ProtectedRoute({
@@ -32,17 +33,17 @@ function ProtectedRoute({
     return <Navigate to="/dashboard" />
   }
 
-  return children
+    return children
 }
 
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
+    const { user, loading } = useAuth()
 
   if (loading) return <div>Loading...</div>
   if (user) return <Navigate to="/home" />
 
-  return children
+    return children
 }
 
 function AppRoutes() {
@@ -137,13 +138,13 @@ function AppRoutes() {
 }
 
 function App() {
-  return (
-    <AuthProvider>
-      <Router>
-        <AppRoutes />
-      </Router>
-    </AuthProvider>
-  )
+    return (
+        <AuthProvider>
+            <Router>
+                <AppRoutes />
+            </Router>
+        </AuthProvider>
+    )
 }
 
 export default App

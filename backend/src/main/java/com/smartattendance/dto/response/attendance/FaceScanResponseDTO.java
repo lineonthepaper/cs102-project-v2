@@ -5,9 +5,6 @@ import java.util.List;
 
 import lombok.Data;
 
-/**
- * Response model returned after processing a face scan.
- */
 @Data
 public class FaceScanResponseDTO {
 
@@ -21,5 +18,8 @@ public class FaceScanResponseDTO {
     private BoundingBoxDTO boundingBox;
     private List<FaceDetectionDTO> allDetections;
     private List<RecognizedStudentDTO> allStudents;
+    private double rawSimilarity;
+    private double margin;
 
+    public FaceScanResponseDTO() {}
 }

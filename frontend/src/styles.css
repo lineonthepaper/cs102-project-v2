@@ -1,3 +1,40 @@
+.section-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0;
+}
+
+.section-filter-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.section-filter-row .filter-block {
+  min-width: 0;
+}
+
+.section-summary-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin: 0;
+}
+
+.selection-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.8rem;
+  border: 2px solid #111827;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
 body {
   margin: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -1210,13 +1247,305 @@ body {
   overflow: hidden;
 }
 
+.manage-modal.export-modal {
+  max-width: 1050px;
+}
+
+.export-modal .manage-modal-body {
+  gap: 1.25rem;
+}
+
+.export-section-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.export-section-table .ta-no-sections {
+  padding: 2rem;
+}
+
+.import-summary-modal {
+  max-width: 980px;
+  background: #ffffff;
+  color: #111111;
+  border: 1px solid #e5e7eb;
+  padding: 2rem 2.25rem;
+}
+
+.import-summary-modal .manage-modal-title h2 {
+  color: #111111;
+}
+
+.import-summary-modal .manage-summary .name {
+  color: #1f2937;
+}
+
+.import-summary-modal .export-summary-note {
+  color: #4b5563;
+}
+
+.import-summary-table-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.import-summary-modal .data-table {
+  background: #ffffff;
+  color: #111827;
+}
+
+.import-summary-modal .data-table th {
+  background: #f3f4f6;
+  color: #111827;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.import-summary-modal .data-table td {
+  border-bottom: 1px solid #e5e7eb;
+  color: #1f2937;
+}
+
+.import-summary-modal .data-table tbody tr:hover {
+  background: #ffffff;
+}
+
+.import-summary-modal .import-row.success,
+.import-summary-modal .import-row.error {
+  color: inherit;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+}
+
+.import-summary-modal .import-row.success:hover,
+.import-summary-modal .import-row.error:hover {
+  background: #f9fafb;
+}
+
+.import-summary-modal .import-row.success td,
+.import-summary-modal .import-row.error td {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.import-summary-messages {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  color: #111827;
+}
+
+.import-summary-warning,
+.import-summary-error {
+  font-size: 0.85rem;
+  color: #111827;
+}
+
+.import-summary-warning h4,
+.import-summary-error h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #111111;
+}
+
+.import-summary-warning ul,
+.import-summary-error ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.import-summary-warning ul li {
+  color: #854d0e;
+}
+
+.import-summary-error ul li {
+  color: #991b1b;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.status-success {
+  background: transparent;
+  color: #111827;
+  border: 1px solid #d1d5db;
+}
+
+.status-error {
+  background: #1f2937;
+  color: #ffffff;
+  border: 1px solid #1f2937;
+}
+
+.muted-text {
+  color: #4b5563;
+}
+
+.muted-subtext {
+  display: block;
+  font-size: 0.65rem;
+  color: #6b7280;
+}
+
+ .import-count {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #111111;
+}
+
+.count-separator,
+.count-total {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #4b5563;
+  margin-left: 0.1rem;
+}
+
+.import-detail-button {
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.import-detail-button:hover,
+.import-detail-button:focus {
+  background: #f3f4f6;
+  border-color: #cbd5f5;
+  outline: none;
+}
+
+.import-detail-modal {
+  max-width: 520px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #111111;
+  padding: 1.75rem 2rem;
+}
+
+.import-detail-body {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.detail-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.detail-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.detail-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #111827;
+}
+
+.detail-message {
+  font-size: 0.85rem;
+  color: #1f2937;
+  line-height: 1.45;
+}
+
+.export-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+}
+
+.data-table tbody tr.clickable-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.data-table tbody tr.selected-row {
+  background: #f3f4f6;
+}
+
+.data-table tbody tr.selected-row:hover {
+  background: #e5e7eb;
+}
+
+.checkbox-cell {
+  width: 48px;
+}
+
+.checkbox-cell input {
+  width: 16px;
+  height: 16px;
+}
+
 .manage-modal-body {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
+  overflow: hidden;
+}
+
+.ta-section-table-container {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  overflow-x: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.ta-section-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ta-section-table thead tr {
+  position: sticky;
+  top: 0;
+  background: #f9fafb;
+}
+
+.ta-section-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .modal-header {
@@ -1726,6 +2055,7 @@ body {
 
 .add-student-form {
   padding: 2rem 3rem;
+  overflow: scroll;
 }
 
 .add-student-form .form-group {

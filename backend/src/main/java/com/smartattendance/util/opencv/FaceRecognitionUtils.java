@@ -99,7 +99,7 @@ public class FaceRecognitionUtils {
                 if (embedding == null) {
                     continue;
                 }
-                float similarity = similarity(targetEmbedding, embedding);
+                float similarity = cosine(targetEmbedding, embedding);
                 System.out.println(String.format("[MATCHING]   Image %d: %.2f%%", i + 1, similarity * 100));
                 
                 if (similarity >= perImageThreshold) {
@@ -192,7 +192,7 @@ public class FaceRecognitionUtils {
             if (embeddings == null || embeddings.isEmpty()) continue;
             for (float[] e : embeddings) {
                 if (e == null) continue;
-                float s = similarity(targetEmbedding, e);
+                float s = cosine(targetEmbedding, e);
                 if (s > bestSimilarity) {
                     bestSimilarity = s;
                     bestIdentity = entry.getKey();
@@ -202,7 +202,7 @@ public class FaceRecognitionUtils {
         return bestIdentity == null ? null : new ComparisonResult(bestIdentity, bestSimilarity, false);
     }
 
-    private static float similarity(float[] v1, float[] v2) {
+    public static float cosine(float[] v1, float[] v2) {
         if (v1 == null || v2 == null) {
             System.out.println("[ERROR] Null vector in similarity!");
             return 0.0f;
@@ -224,12 +224,24 @@ public class FaceRecognitionUtils {
         }
         
         // Verify vectors are normalized (magnitude should be ~1.0)
-        if (ret > 1.01f || ret < -1.01f) {
-            System.out.println("[WARNING] Dot product out of range for normalized vectors: " + ret);
-            System.out.println("[WARNING] This suggests vectors are not properly normalized!");
+        float denominator = (float) (Math.sqrt(mod1) * Math.sqrt(mod2));
+        if (denominator == 0.0f) {
+            return 0.0f;
         }
-        System.out.println(((ret / Math.sqrt(mod1) / Math.sqrt(mod2) + 1) / 2.0f));
-        return (float) ((ret / Math.sqrt(mod1) / Math.sqrt(mod2) + 1) / 2.0f);
+        float cosine = ret / denominator;
+        if (cosine > 1.0001f) {
+            System.out.println("[WARNING] Cosine similarity > 1 detected (" + cosine + "). Clamping to 1.");
+        } else if (cosine < -1.0001f) {
+            System.out.println("[WARNING] Cosine similarity < -1 detected (" + cosine + "). Clamping to -1.");
+        }
+        if (Float.isNaN(cosine) || Float.isInfinite(cosine)) {
+            return 0.0f;
+        }
+        return Math.max(-1.0f, Math.min(1.0f, cosine));
+    }
+
+    private static float convertLegacyThreshold(float legacyScore) {
+        return Math.max(-1.0f, Math.min(1.0f, legacyScore * 2.0f - 1.0f));
     }
 
 }
