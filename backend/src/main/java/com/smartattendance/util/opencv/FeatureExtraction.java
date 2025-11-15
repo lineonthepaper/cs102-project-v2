@@ -23,12 +23,12 @@ import java.awt.image.BufferedImage;
 
 import org.opencv.core.Mat;
 
-import com.smartattendance.util.opencv.MatConversionUtils;
+import com.smartattendance.util.converter.MatConverter;
 
 public class FeatureExtraction {
     public static float[] predict(Mat mat)
             throws IOException, ModelException, TranslateException {
-        Image img = ImageFactory.getInstance().fromImage(MatConversionUtils.matToBufferedImage(mat));
+        Image img = ImageFactory.getInstance().fromImage(MatConverter.matToBufferedImage(mat));
         img.getWrappedImage();
 
         List<Float> mean =

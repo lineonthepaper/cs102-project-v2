@@ -28,19 +28,19 @@ public class FaceRecognitionService {
 
     private static final Logger logger = LoggerFactory.getLogger(FaceRecognitionService.class);
 
-    @Value("${face.similarityThreshold:0.88}")
+    @Value("${face.similarityThreshold:0.55}")
     private double similarityThreshold;
 
-    @Value("${face.perImageThreshold:0.85}")
+    @Value("${face.perImageThreshold:0.50}")
     private float perImageThreshold;
 
-    @Value("${face.minHitsRequired:2}")
+    @Value("${face.minHitsRequired:1}")
     private int minHitsRequired;
 
-    @Value("${face.singleImageStrictThreshold:0.92}")
+    @Value("${face.singleImageStrictThreshold:0.58}")
     private float singleImageStrictThreshold;
 
-    @Value("${face.top2Margin:0.03}")
+    @Value("${face.top2Margin:0.05}")
     private float top2Margin;
 
     private final ResourcePathUtils resourceUtils;

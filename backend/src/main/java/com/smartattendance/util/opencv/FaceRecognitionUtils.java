@@ -12,10 +12,10 @@ import com.smartattendance.entity.ComparisonResult;
 public class FaceRecognitionUtils {
 
     // Default safeguards to reduce false positives (used by compatibility wrapper)
-    private static final float DEFAULT_PER_IMAGE_THRESHOLD = 0.82f; // each image must clear this for a "hit"
+    private static final float DEFAULT_PER_IMAGE_THRESHOLD = 0.5f; // each image must clear this for a "hit"
     private static final int DEFAULT_MIN_HITS_REQUIRED = 1;          // require at least N images to agree per identity
-    private static final float DEFAULT_SINGLE_IMAGE_STRICT_THRESHOLD = 0.90f; // stricter if only one reference image
-    private static final float DEFAULT_TOP2_MARGIN = 0.02f;          // best must exceed runner-up by this margin
+    private static final float DEFAULT_SINGLE_IMAGE_STRICT_THRESHOLD = 0.58f; // stricter if only one reference image
+    private static final float DEFAULT_TOP2_MARGIN = 0.05f;          // best must exceed runner-up by this margin
 
 
     // Find the best match from training faces (single embedding per identity)

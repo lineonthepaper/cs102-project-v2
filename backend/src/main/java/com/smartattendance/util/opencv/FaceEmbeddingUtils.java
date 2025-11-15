@@ -27,8 +27,6 @@ public class FaceEmbeddingUtils {
         }
     }
 
-    // Remove unused batch/test CSV utilities; leave only faceToEmbedding API and normalization
-
     private static float[] normalizeVector(float[] vector) {
         float norm = 0.0f;
         for (float v : vector)

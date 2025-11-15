@@ -1,4 +1,4 @@
-package com.smartattendance.util.opencv;
+package com.smartattendance.util.converter;
 
 import java.io.IOException;
 
@@ -12,7 +12,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.awt.image.BufferedImage;
 
-public class MatConversionUtils {
+public class MatConverter {
     public static Mat bufferedImageToMat(BufferedImage image) throws IOException {
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         ImageIO.write(image, "jpg", byteArrayOutputStream);
